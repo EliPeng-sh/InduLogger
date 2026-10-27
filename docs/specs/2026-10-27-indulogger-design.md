@@ -163,9 +163,12 @@
 | 区域 | 位址 | 大小 | Sector |
 |---|---|---|---|
 | Bootloader | 0x08000000 | 16K | S0 |
-| OTA Metadata | 0x08010000 | 16K | S1 |
-| App Slot A | 0x08020000 | 224K | S2–S5 |
-| Staging Slot | 0x08060000 | 256K | S6–S7 |
+| OTA Metadata | 0x08004000 | 16K | S1 |
+| App Slot A | 0x08008000 | 224K | S2–S5 |
+| Staging Slot | 0x08040000 | 256K | S6–S7 |
+
+> Sector 对齐依据 F411 实际布局：S0–S3 各 16K、S4 64K、S5–S7 各 128K。
+> 合计 16+16+224+256 = 512K，恰好用满。16K Bootloader 需精简实现（无 printf/libc，目标 <14K）。
 
 Metadata 存版本号、影像 SHA、更新旗标、回滚计数。
 
