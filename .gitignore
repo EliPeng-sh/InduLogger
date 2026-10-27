@@ -1,0 +1,26 @@
+# STM32 / STM32CubeIDE
+stm32/**/Debug/
+stm32/**/Release/
+*.o
+*.d
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+
+# ESP-IDF
+esp32/build/
+esp32/sdkconfig.old
+esp32/managed_components/
+esp32/dependencies.lock
+
+# Node-RED / tools
+tools/node_modules/
+tools/*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+*.swp
