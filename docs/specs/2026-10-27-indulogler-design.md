@@ -250,13 +250,13 @@ Metadata 存版本号、影像 SHA、更新旗标、回滚计数。
 
 ## 13. 工具链
 
-STM32CubeIDE（真实职缺常指定）、ESP-IDF、Node-RED、Git/GitHub、**GitHub Actions（CI：双固件构建 + 协议库单元测试 + cppcheck）**、**Unity（PC 端单元测试框架）**
+**STM32CubeMX（CMake 输出）+ arm-none-eabi-gcc + CMake/Ninja + VSCode**——选择理由：CI（第 3 节主张 3 要求 GitHub Actions 每次 push 自动构建固件）必须无头构建，CubeIDE 的 IDE 工程不利于 CI；CubeMX 生成的 CMake 工程同样覆盖职缺关键词（STM32CubeMX/STM32/GCC/FreeRTOS）。OpenOCD + ST-Link 烧录（usbipd-win 通路）。ESP-IDF、Node-RED、Git/GitHub、GitHub Actions（CI：双固件构建 + 协议库单元测试 + cppcheck）、Unity（PC 端单元测试框架）。
 
 ## 14. 里程碑
 
 | 週 | 目标 | 出货点 |
 |---|---|---|
-| W1 | CubeIDE 工程 + FreeRTOS 任务骨架 + 感测驱动 + SD 记录 + **诊断/埋点骨架（DWT、benchmark GPIO、stats 模块、reset-cause）** | — |
+| W1 | CubeMX(CMake) 工程 + FreeRTOS 任务骨架 + 感测驱动 + SD 记录 + **诊断/埋点骨架（DWT、benchmark GPIO、stats 模块、reset-cause）** + CI 上线 | — |
 | W2 | Modbus RTU slave + 协议栈（STM32 端）+ **协议库 PC 单元测试 + CI 上线**；ESP32 WiFi/MQTT | — |
 | W3 | BLE 配网 + 系统整合 + Node-RED 看板 + **诊断端到端（Modbus 诊断暂存器 + diag topic）** + I2C 恢复 | — |
 | W4 | 文档打磨 + **压测模式基准量测 + 验证报告 v1** + 协议规格书、平台指南、演示视频（约多花 2–3 天，总时程不变） | ✅ v1 上架作品集，可开始投标 |
