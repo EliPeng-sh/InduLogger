@@ -1,6 +1,8 @@
-# InduLogger Milestone 1 (W1): STM32 Skeleton Implementation Plan
+# InduLogger Milestone 1 (W1–W2): STM32 Skeleton Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+> **Revised 2026-10-30 after technical review:** float-printf linker flag (T1), `setvbuf` in console (T3), IWDG ~2 s + fed from first boot + debug freeze (T1/T4), `-DHOST_TEST` in host build (T4), cppcheck CI job + download de-risk note (T5), BME280 config/trim fixes + defaultTask stack 512 + watermark (T6), MPU6050 clone-ID note (T7), bounded SPI timeouts + 12.5 MHz (T8), alive-mask watchdog + hung-task check (T9); schedule re-baselined M1 → W1–W2 (spec §14 shifted one week, v1 ship point W4→W5).
 
 **Goal:** STM32F411 + FreeRTOS skeleton that samples BME280/MPU6050, logs CSV to SD card, prints live diagnostics over the debug UART, runs under IWDG watchdog, with DWT/GPIO instrumentation and CI (firmware build + host unit tests) green on every push.
 
@@ -8,13 +10,14 @@
 
 **Tech Stack:** C11 · STM32F411RE (Nucleo) · FreeRTOS (raw API, heap_4) · STM32CubeIDE (Windows native, embeds CubeMX; headless build in CI) · Unity (host tests) · GitHub Actions
 
-**Spec:** `docs/specs/2026-10-27-indulogger-design.md` (Milestone = spec §14 row W1; evidence infra = spec §3/§4 v1 "证据基建" items; watchdog/health = §8)
+**Spec:** `docs/specs/2026-10-27-indulogger-design.md` (Milestone = spec §14 row W1–W2; evidence infra = spec §3/§4 v1 "证据基建" items; watchdog/health = §8)
 
 ## Global Constraints
 
 - Language C11; compile with `-Wall -Wextra`; zero warnings before commit.
 - No `malloc()` in drivers or app code; only the FreeRTOS heap (heap_4, 30 KB).
 - No blocking busy-wait loops inside tasks; use queues, task notifications, or `vTaskDelay`.
+- Every I2C **and SPI** transaction uses a bounded HAL timeout (~100 ms) — never 0 or infinite. An unbounded SPI wait would hang the pull-card fault path (Review Focus #2).
 - Every failure path increments a stats error counter (`stats_error(ERR_x)`) — evidence infra rule from spec §3.
 - Do not edit CubeMX-generated code outside `/* USER CODE BEGIN ... */` sections.
 - Comments/docs in English; commit messages in Conventional Commits; one commit per task.
@@ -26,7 +29,7 @@
 1. **I2C sensor hangs (SDA stuck / NACK)** — a disconnected or wedged sensor must not stall a task: every I2C transaction bounded by ~100 ms timeout, failure increments `ERR_BME_TIMEOUT`/`ERR_MPU_TIMEOUT`, task keeps running. Pinned in Task 6 (disconnect test).
 2. **SD card removed mid-run** — FATFS write errors must be caught: LoggerTask logs `ERR_SD_WRITE`, retries mount on interval, never crashes. Pinned in Task 8 (pull-card test).
 3. **Implausible sensor values** (e.g., BME280 temp outside −40…85 °C, accel magnitude outside 0.3…2.0 g) — must be rejected by `sensor_plausible_*()`, counted via `ERR_SENSOR_RANGE`, last-good values cached. Pinned in Task 7 (host unit tests).
-4. **Watchdog reset in the middle of an SD write** — after reboot the card must mount cleanly and logging resumes (dirty-card tolerance). Pinned in Task 8 (force-reset-during-write step).
+4. **Watchdog reset in the middle of an SD write** — after reboot the card must mount cleanly and logging resumes (dirty-card tolerance). Pinned in Task 8 (force-reset-during-write step) and Task 9 Step 5 (hung-task live-guard check — a wedged app task must starve the watchdog, not just the skeleton feed).
 5. **Queue overflow under stress** — `sensorQ` full must drop newest + increment `ERR_Q_DROP`, never deadlock the sensor task. Pinned in Task 9 (stress-mode check).
 
 ---
@@ -35,11 +38,12 @@
 
 **Files:**
 - Create: `stm32/` (CubeIDE project: `InduLogger.ioc`, `.project`, `.cproject`, `.mxproject`, `.settings/`, `Core/`, `Drivers/`, `Middlewares/`)
+- Modify: `stm32/Core/Src/main.c` (IWDG debug-freeze one-liner, USER CODE 2)
 - Modify: `.gitignore` (already covers `stm32/**/Debug/`, `stm32/**/Release/`; committed in Phase 0)
 - Already committed: `docs/notes/toolchain.md` (rewritten in Phase 0 for CubeIDE)
 
 **Interfaces:**
-- Produces: `stm32/Debug/InduLogger.elf` build path used by Task 2 (flash) and CI (Task 5); FreeRTOS enabled with raw API; peripherals: USART2 (debug, 115200 8N1), I2C1 (400 kHz, PB8/PB9), SPI1 (PB3/PB4/PB5) + GPIO PA4 `SD_CS`, USART1 (PA9/PA10, 115200, for W2 co-processor link), IWDG (~1 s), GPIO outputs PA5 (onboard LED `LED_HEARTBEAT`), PB0 `BENCH_GPIO1`, PB1 `BENCH_GPIO2`; HAL timebase on TIM6.
+- Produces: `stm32/Debug/InduLogger.elf` build path used by Task 2 (flash) and CI (Task 5); FreeRTOS enabled with raw API; peripherals: USART2 (debug, 115200 8N1), I2C1 (400 kHz, PB8/PB9), SPI1 (PB3/PB4/PB5) + GPIO PA4 `SD_CS`, USART1 (PA9/PA10, 115200, for W2 co-processor link), IWDG (~2 s timeout — see step 9; the 1 s alive-check cadence used from Task 9 needs ≥2× margin), GPIO outputs PA5 (onboard LED `LED_HEARTBEAT`), PB0 `BENCH_GPIO1`, PB1 `BENCH_GPIO2`; HAL timebase on TIM6; newlib-nano float printf enabled via `-u _printf_float` (step 1 item 13).
 
 - [ ] **Step 1: Create the project in STM32CubeIDE (Windows)**
 
@@ -52,11 +56,12 @@ Install STM32CubeIDE (myST account required; no board needed), workspace at a Wi
 6. **I2C1**: I2C mode, Fast Mode 400 kHz (PB8=SCL, PB9=SDA).
 7. **SPI1**: Full-Duplex Master, Hardware NSS off; pins PB3=SCK, PB4=MISO, PB5=MOSI; PA4 → `GPIO_Output`, label `SD_CS`.
 8. **USART1** (PA9/PA10): Asynchronous, 115200; NVIC: USART1 global interrupt enabled; DMA: USART1_RX (Normal). (Used in W2; pin/NVIC only now.)
-9. **IWDG**: Prescaler 32, Counter Reload 999 (LSI 32 kHz / 32 = 1 kHz tick → ~1 s).
+9. **IWDG**: Prescaler 32, Counter Reload 1999 (LSI 32 kHz / 32 = 1 kHz tick → ~2 s timeout; the Task 9 Monitor alive-check feeds at 1 s cadence, so the timeout needs that margin).
 10. **GPIO outputs**: PA5 label `LED_HEARTBEAT` (onboard LD2, output low), PB0 label `BENCH_GPIO1`, PB1 label `BENCH_GPIO2`.
 11. **Middleware**: FreeRTOS — Interface: *CMSIS-FreeRTOS unchecked* (raw API); Heap: **heap_4**; TOTAL_HEAP_SIZE = **30720**; TICK_RATE 1000 Hz.
 12. **FATFS**: check "User-defined" (SD via SPI arrives in Task 8; enabling now avoids re-gen surprises). Set `_FS_TINY = 0`, `_USE_LFN = 1`.
-13. Click **Generate Code** (build tooling is CubeIDE's managed build — nothing to select).
+13. **Linker float printf**: Project → Properties → C/C++ Build → Settings → Tool Settings → MCU GCC Linker → Miscellaneous: add `-u _printf_float`, in **both Debug and Release** configurations. CubeIDE links newlib-nano, which silently drops `%f` output without this flag — every sensor print from Task 6 on depends on it.
+14. Click **Generate Code** (build tooling is CubeIDE's managed build — nothing to select).
 
 - [ ] **Step 2: Verify generated tree**
 
@@ -66,16 +71,23 @@ Run: `ls stm32` → expect `InduLogger.ioc .project .cproject .mxproject .settin
 
 After the first build, record the CubeIDE version (Help → About) and the bundled arm-none-eabi-gcc version (build console banner, or Project → Properties → C/C++ Build → Tool Chain Path) in `docs/notes/toolchain.md`. (File already rewritten in Phase 0; fill in the TBD entries.)
 
-- [ ] **Step 4: Add heartbeat toggle to the default task**
+- [ ] **Step 4: Heartbeat + keep the live IWDG fed + IWDG debug freeze**
 
-In `stm32/Core/Src/freertos.c`, inside the default task loop (`USER CODE` region):
+CubeMX already generated `MX_IWDG_Init()` in `main.c` (IWDG was activated in step 9), so the watchdog counts from the first boot and **must be fed from day one** — otherwise the board resets every ~2 s from the very first flash.
+
+1. In `stm32/Core/Src/freertos.c`, add `#include "iwdg.h"` to the USER CODE Includes block, then inside the default task loop (`USER CODE` region):
 ```c
 /* USER CODE BEGIN DefaultTask */
 for (;;) {
   HAL_GPIO_TogglePin(LED_HEARTBEAT_GPIO_Port, LED_HEARTBEAT_Pin);
+  HAL_IWDG_Refresh(&hiwdg); /* temporary single-task skeleton; Task 4 swaps in iwdg_feed(), Task 9 moves feeding to the Monitor alive-mask */
   vTaskDelay(pdMS_TO_TICKS(500));
 }
 /* USER CODE END DefaultTask */
+```
+2. In `stm32/Core/Src/main.c`, USER CODE 2: freeze IWDG while the core is halted, so breakpoint debugging stays usable for the rest of M1:
+```c
+DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP; /* pause IWDG under debugger */
 ```
 
 - [ ] **Step 5: Build locally**
@@ -140,6 +152,7 @@ git commit -m "feat: first flash via CubeIDE, LED heartbeat verified"
 
 void console_init(void) {
   /* USART2 already configured by CubeMX (huart2); nothing extra needed. */
+  setvbuf(stdout, NULL, _IONBF, 0); /* unbuffered: no newlib internal 1KB malloc on first printf, output stays immediate */
   printf("\r\nInduLogger boot v0.1.0-m1\r\n");
 }
 
@@ -202,6 +215,7 @@ foreach(T ${TESTS})
   get_filename_component(N ${T} NAME_WE)
   add_executable(${N} ${T} ../stm32/platform/stats/stats.c)
   target_include_directories(${N} PRIVATE ../stm32/platform/stats)
+  target_compile_definitions(${N} PRIVATE HOST_TEST) # required by the #ifndef HOST_TEST guards in stats.c
   target_compile_options(${N} PRIVATE -Wall -Wextra)
   add_test(NAME ${N} COMMAND ${N})
 endforeach()
@@ -251,11 +265,11 @@ Same command as Step 2. Expected: 3/3 PASS.
 ```c
 reset_cause_t rc = reset_cause_capture();
 printf("reset cause: %s\r\n", reset_cause_name(rc));
-HAL_IWDG_Init(&hiwdg); /* CubeMX-generated handle */
+/* IWDG was already started by the CubeMX-generated MX_IWDG_Init() — do NOT HAL_IWDG_Init again. */
 ```
-Default task loop: `iwdg_feed();`
+Default task loop: replace Task 1's temporary `HAL_IWDG_Refresh(&hiwdg)` with `iwdg_feed();` (still single-task skeleton feeding; Task 9 moves feeding into the MonitorTask alive-mask so a hung Sensor/Logger task starves the watchdog).
 Build + flash → expect `reset cause: external-pin` (first flash asserts NRST).
-Then temporarily comment `iwdg_feed()`, rebuild+flash, wait 2 s → LED stops, board resets; restore feed, flash again → expect `reset cause: iwdg` on next boot console output. Restore the feed.
+Then temporarily comment `iwdg_feed()`, rebuild+flash: after ~2–3 s the board resets itself and the console shows `reset cause: iwdg` on every auto-reboot. Restore the feed, rebuild+flash — the next boot shows a normal cause again (flags were consumed at capture; the `iwdg` evidence is the repeated boot line above).
 
 - [ ] **Step 6: Commit**
 
@@ -314,13 +328,25 @@ jobs:
         with:
           name: firmware
           path: stm32/Debug/InduLogger.elf
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: cppcheck (hand-written code only, generated trees excluded)
+        run: |
+          DIRS=$(ls -d stm32/app stm32/platform stm32/drivers host 2>/dev/null)
+          cppcheck --std=c11 --platform=unix64 --enable=warning,style --error-exitcode=1 \
+            --suppress=missingInclude --suppress=missingIncludeSystem $DIRS
 ```
+
+> **De-risking note:** the pinned CubeIDE download URL is the flaky part of this task (myST sessions often block direct `curl` with 403). Before writing the workflow, time-box ~1 h to verify only: download → unzip → `-import` → headless build. If the direct URL fails, mirror the zip once (browser download → private GitHub release / object storage) or set `continue-on-error: true` on the `firmware-build` job until the URL is pinned — `host-tests` and `static-analysis` stay blocking. Budget half a day for this task overall.
 
 - [ ] **Step 2: Push to GitHub, verify green**
 
 Create empty repo `InduLogger` on GitHub (no README), then:
 `git remote add origin git@github.com:<user>/InduLogger.git && git push -u origin main`
-Expected: both jobs green on the Actions tab.
+Expected: all three jobs green (host-tests, firmware-build, static-analysis) on the Actions tab.
 
 - [ ] **Step 3: Commit**
 
@@ -334,9 +360,10 @@ git commit -m "ci: host unit tests + headless CubeIDE firmware build on push"
 **Files:**
 - Create: `stm32/drivers/bme280/bme280.h`, `stm32/drivers/bme280/bme280.c`
 - Create: `stm32/app/industrial_logger/app_sensors.c` (driver smoke harness, expanded in Task 9)
+- Modify: `stm32/InduLogger.ioc` (defaultTask stack 128 → 512 words — see Step 2)
 
 **Interfaces:**
-- Consumes: `stats_error()` (Task 4), `hiadc?` no — CubeMX `hi2c1` handle
+- Consumes: `stats_error()` (Task 4), CubeMX `hi2c1` handle
 - Produces:
 ```c
 // returns 0 on success, -1 on timeout/NACK (increments ERR_BME_TIMEOUT)
@@ -347,7 +374,7 @@ int bme280_read(float *temp_c, float *hum_pct, float *press_hpa); // blocking �
 - [ ] **Step 1: Implement driver (I2C bounded + compensation)**
 
 Key content of `bme280.c` (compact float compensation, normal mode):
-- init: verify chip id reg `0xD0 == 0x60`; soft reset `0xE0=0xB6`; write trim reads `0x88..0xA1` (T1..P9, 18B) + `0xE1..0xE7` (H4/H5/H6); config `0xF5=0x1C` (standby 1000ms, IIR ×16); `0xF2=0x01` (hum ×1); `0xF4=0x57` (T ×2, P ×16, normal mode).
+- init: verify chip id reg `0xD0 == 0x60`; soft reset `0xE0=0xB6`; read trims `0x88..0xA1` (25 B = T1–T3, P1–P9, H1) + `0xE1..0xE7` (7 B = H2–H6); config `0xF5=0x9C` (t_sb 500 ms — matches the 500 ms sampling period — + IIR ×16); `0xF2=0x01` (hum ×1); `0xF4=0x57` (T ×2, P ×16, normal mode).
 - read: burst `0xF7..0xFE` (8B) with `HAL_I2C_Mem_Read(..., 100)`; per datasheet 3.3.3 float formulas compute `temp_c`, `hum_pct`, `press_hpa` (=P/256/100).
 - Any `HAL_TIMEOUT`/`HAL_ERROR` → `stats_error(ERR_BME_TIMEOUT)`, return -1.
 All I2C calls use 100 ms timeout — never infinite.
@@ -361,6 +388,11 @@ if (bme280_read(&t, &h, &p) == 0)
   printf("BME280 t=%.2fC rh=%.2f%% p=%.1fhPa\r\n", t, h, p);
 else
   printf("BME280 read failed (err cnt=%u)\r\n", stats_get(ERR_BME_TIMEOUT));
+```
+
+The smoke `printf` runs in the default task, whose CubeMX stack default (128 words) is too small for newlib's float formatting. In the `.ioc` set FreeRTOS → Tasks → defaultTask → Stack Size = **512**, regenerate, rebuild. Also add a first stack check to the same smoke loop (the full per-task check arrives with the Monitor in Task 9) and confirm ≥ 40 words free:
+```c
+printf("wm=%u\r\n", (unsigned)uxTaskGetStackHighWaterMark(NULL));
 ```
 
 - [ ] **Step 3: On-target verification (two physical cases)**
@@ -414,7 +446,7 @@ void test_mpu_flat(void)     { TEST_ASSERT_FALSE(sensor_plausible_mpu(5.0f, 0.0f
 
 - [ ] **Step 4: Implement MPU6050 driver**
 
-init: `WHO_AM_I` (0x75) == 0x68; wake `PWR_MGMT_1=0x00`; `ACCEL_CONFIG=0x08` (±4g), `GYRO_CONFIG=0x08` (±500 dps); read: burst 14B from 0x3B, scale accel `raw/8192.0f`. Timeouts 100 ms → `stats_error(ERR_MPU_TIMEOUT)`. Any out-of-range reading → `stats_error(ERR_SENSOR_RANGE)`, return last-good.
+init: `WHO_AM_I` (0x75) == 0x68 — cheap GY-521 clones sometimes return a different ID; on mismatch fail init + count the error and print the observed ID once (whitelist a clone's value only with a code comment after confirming the board is a clone); wake `PWR_MGMT_1=0x00`; `ACCEL_CONFIG=0x08` (±4g), `GYRO_CONFIG=0x08` (±500 dps); read: burst 14B from 0x3B, scale accel `raw/8192.0f`. Timeouts 100 ms → `stats_error(ERR_MPU_TIMEOUT)`. Any out-of-range reading → `stats_error(ERR_SENSOR_RANGE)`, return last-good.
 
 - [ ] **Step 5: On-target verification**
 
@@ -445,7 +477,7 @@ Config defaults (`config.h`): `LOG_PATH "0:indulog.csv"`, `SAMPLE_PERIOD_MS 500`
 
 - [ ] **Step 1: Implement SPI-SD driver + diskio glue**
 
-`sd_spi.c`: standard SPI-mode SD init (74 dummy clocks CS-high → CMD0 until idle → CMD8 0x1AA → ACMD41(HCS) → CMD58 OCR check) and single-block read(CMD17)/write(CMD24) over SPI1 at 400 kHz init then ≤ 21 MHz; CRC off after CMD0 (CMD59=0). Implement the FATFS glue (`disk_initialize/disk_read/disk_write/disk_ioctl`) in `user_diskio_glue.c` mapping to these functions (this fills the CubeMX `user_diskio.c` stubs — do it via the glue file so CubeMX regen-safe).
+`sd_spi.c`: standard SPI-mode SD init (74 dummy clocks CS-high → CMD0 until idle → CMD8 0x1AA → ACMD41(HCS) → CMD58 OCR check) and single-block read(CMD17)/write(CMD24) over SPI1 at 400 kHz init then **12.5 MHz** (SPI1 prescaler /8 — from the 100 MHz APB2 the integer steps are 50/25/12.5 MHz, so 12.5 is the safe breadboard choice); CRC off after CMD0 (CMD59=0). **Every SPI transfer uses a bounded HAL timeout (100 ms)** — same rule as I2C: a stuck or removed card shows up as a timeout or 0xFF/0x00 dummy reads, bails out with no retry loops, and maps to `disk_*` error returns so FATFS reports failure (Review Focus #2 depends on SPI not hanging). Implement the FATFS glue (`disk_initialize/disk_read/disk_write/disk_ioctl`) in `user_diskio_glue.c` mapping to these functions (this fills the CubeMX `user_diskio.c` stubs — do it via the glue file so CubeMX regen-safe).
 
 - [ ] **Step 2: Mount + write + readback test**
 
@@ -480,6 +512,7 @@ git commit -m "feat(sdcard): SPI-SD + FATFS, pull-card and dirty-card fault-inje
 - Create: `host/tests/test_csv_format.c`
 - Create: `stm32/app/industrial_logger/app_monitor.c`
 - Modify: `host/CMakeLists.txt` (add logger_format.c to sources), `stm32/app/industrial_logger/app_sensors.c`, `app_logger.c`, `stm32/Core/Src/freertos.c` (task creation in USER CODE)
+- Modify: `stm32/platform/stats/stats.h`, `stm32/platform/stats/stats.c` (alive-mask heartbeat API — see Step 3)
 
 **Interfaces:**
 - Consumes: Tasks 4/6/7/8 APIs
@@ -492,8 +525,13 @@ extern QueueHandle_t sensorQ; // struct sensor_sample {uint32_t ts_ms; float t,h
 // freertos.c USER CODE: xTaskCreate(SensorTask, "sensor", 512, NULL, 3, NULL);
 // xTaskCreate(LoggerTask, "logger", 1024, NULL, 2, NULL);
 // xTaskCreate(MonitorTask, "monitor", 512, NULL, 1, NULL);
+// stats.h additions (alive-mask watchdog, target-side only, HOST_TEST-guarded):
+//   #define WD_HB_SENSOR 0u
+//   #define WD_HB_LOGGER 1u
+//   void wd_heartbeat(uint32_t id); // guarded tasks call this every loop iteration
+//   bool wd_all_alive(void);        // true iff every heartbeat advanced since the previous call
 ```
-Monitor prints every 5 s: uptime, reset cause, per-task stack high-water (via `uxTaskGetStackHighWaterMark`), heap free/largest (`xPortGetFreeHeapSize`/`xPortGetMinimumEverFreeHeapSize`), all error counters.
+MonitorTask: every 1 s — `if (wd_all_alive()) iwdg_feed();` (a hung Sensor/Logger freezes its heartbeat → feeding stops → IWDG resets within ~2 s; the default task stops feeding from here on). Every 5 s it prints: uptime, reset cause, per-task stack high-water (via `uxTaskGetStackHighWaterMark`), heap free/largest (`xPortGetFreeHeapSize`/`xPortGetMinimumEverFreeHeapSize`), all error counters.
 
 - [ ] **Step 1: Write failing CSV formatter test**
 
@@ -512,17 +550,26 @@ Run ctest (Task 4 command) → Expected: FAIL.
 
 - [ ] **Step 2: Implement `logger_format.c`** (`snprintf` with `"%" PRIu32 ",%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n"`), add to host build, run ctest → PASS (now 4/4 test executables incl. csv).
 
-- [ ] **Step 3: Wire tasks + queue (drop-newest policy on full: `xQueueSend` with 0 tick timeout → `stats_error(ERR_Q_DROP)`); LoggerTask writes header line once when file is empty (`f_lseek` end==0 → `"ts_ms,temp_c,hum_pct,press_hpa,ax_g,ay_g,az_g\n"`)**
+- [ ] **Step 3: Wire tasks + queue + alive-mask watchdog**
+  (a) drop-newest policy on full: `xQueueSend` with 0 tick timeout → `stats_error(ERR_Q_DROP)`;
+  (b) LoggerTask loop uses `xQueueReceive(..., pdMS_TO_TICKS(250))` and calls `wd_heartbeat(WD_HB_LOGGER)` every iteration — including the empty-queue timeout path, so the heartbeat advances even with no data; SensorTask calls `wd_heartbeat(WD_HB_SENSOR)` every sample;
+  (c) MonitorTask: every 1 s `if (wd_all_alive()) iwdg_feed();`; every 5 s the diagnostics block; **remove** the default task's `iwdg_feed()` (heartbeat LED only from here on);
+  (d) LoggerTask writes header line once when file is empty (`f_lseek` end==0 → `"ts_ms,temp_c,hum_pct,press_hpa,ax_g,ay_g,az_g\n"`);
+  (e) `stats.{h,c}`: add the four wd_heartbeat items above (target side: `__atomic_fetch_add` per counter + snapshot compare; all inside `#ifndef HOST_TEST` so host builds still pass).
 
 - [ ] **Step 4: On-target functional check**
 
 Serial: 2 Hz samples land in `indulog.csv` (verify by re-inserting card in PC reader); Monitor block prints every 5 s with sane values; stack watermarks ≥ 40 words reported (if any task < 40, increase its stack by 256 words and re-verify).
 
-- [ ] **Step 5: Queue-overflow stress check (Review Focus #5)**
+- [ ] **Step 5: Hung-task live-guard check (Review Focus #4)**
+
+Temporarily wedge LoggerTask (comment its `wd_heartbeat(WD_HB_LOGGER)` call and busy-wait after the first sample) → within ~3 s the board resets itself and the console shows `reset cause: iwdg` on the auto-reboots — proof the alive-mask starves the watchdog when an app task hangs (the Task 4 default-task feed cannot catch this). Restore the heartbeat call.
+
+- [ ] **Step 6: Queue-overflow stress check (Review Focus #5)**
 
 Temporarily set `SAMPLE_PERIOD_MS 10` (logger disk latency > sample period) → expect `ERR_Q_DROP` increments in Monitor output, sensor task never blocks; restore 500.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add host stm32/app stm32/Core
@@ -587,7 +634,7 @@ git commit -m "docs: M1 close-out - validation index, toolchain versions, status
 - [ ] BME280 + MPU6050 sampled 2 Hz via I2C (bounded 100 ms, errors counted)
 - [ ] CSV rows land in `0:indulog.csv` on SD (FATFS), tolerant to pull-card & dirty reset
 - [ ] Monitor prints uptime/reset-cause/stack-watermarks/heap/counters every 5 s
-- [ ] IWDG live (force-reset produces `reset cause: iwdg`)
+- [ ] IWDG live (force-reset produces `reset cause: iwdg`); hung Sensor/Logger task starves the watchdog via the Monitor alive-mask (Task 9 Step 5)
 - [ ] DWT latency + BENCH GPIO verified with scope
-- [ ] Host tests (reset-cause, plausibility, CSV) + cross build green in CI
+- [ ] Host tests (reset-cause, plausibility, CSV) + cross build + cppcheck green in CI
 - [ ] All 5 Review Focus failure modes exercised with recorded evidence
