@@ -27,5 +27,4 @@ Thumbs.db
 
 # build trees
 build/
-stm32/build/
 host/build/
