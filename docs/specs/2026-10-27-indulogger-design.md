@@ -1,7 +1,7 @@
 # InduLogger 设计文档
 
-- **日期**: 2026-10-27
-- **状态**: 已批准（经讨论确认，含 v2 OTA 合并决策）
+- **日期**: 2026-10-27（2026-10-29 修订：加入证据导向技术定位）
+- **状态**: 已批准（含 v2 OTA 合并决策 + 三大可量测主张）
 - **作者**: Eli Peng
 - **性质**: 接案作品集旗舰项目
 
@@ -16,37 +16,73 @@
 - 真实职缺实例：*STM32 Firmware Engineer – RTOS and Secure FOTA*（要求处理中断更新、断电、固件损坏、恢复/回滚）；*Fix ESP32 Sensor Device – PCB & Firmware Debugging*；*Custom CANopen to Modbus RTU/TCP Gateway*
 - Upwork 官方提示：客户重视「在真实硬件上运行的固件」，而非纯仿真
 
-**一句话定位**：产品级 STM32 + FreeRTOS 工业数据采集平台，双 MCU 架构（ESP32 通讯协处理器），v1 交付完整 IoT 功能，v2 加入安全 FOTA（含断电恢复与自动回滚），平台分层设计可延伸至仪控、医疗场景。
+**定位思路**：个人开发者做不出整体上超越公司的产品，也不需要——本项目的目的是**接案**，作品集的任务是**消除客户恐惧**。因此以「可验证的工程证据」替代「产品卖点」：口号无效，数据有效。拥有示波器/逻辑分析仪并能拿出实测证据的接案者是少数，这是护城河。
+
+**一句话定位**：产品级 STM32 + FreeRTOS 工业数据采集平台，双 MCU 架构（ESP32 通讯协处理器），v1 交付完整 IoT 功能，v2 加入安全 FOTA（含断电恢复与自动回滚），平台分层设计可延伸至仪控、医疗场景——**核心卖点是三大可量测工程主张（见第 3 节）**。
 
 ## 2. 目标与成功标准
 
 | 维度 | 标准 |
 |---|---|
 | 技术展示 | FreeRTOS 多任务架构、外设驱动（I2C/SPI/UART+DMA）、Modbus RTU、自订双 MCU 协定、FATFS、Bootloader/FOTA+回滚 |
-| 作品集形态 | 英文 README（架构图+接线图+quickstart）、协议规格书、平台扩展指南、90 秒演示视频、断电实测视频 |
+| 证据展示 | 三大主张全部有实测量化证据（示波器截图、延迟直方图、断电实测视频、浸泡测试报告、CI 绿灯） |
+| 作品集形态 | 英文 README（架构图+接线图+quickstart+「Measured, not claimed」数据表）、协议规格书、平台扩展指南、90 秒演示视频、断电实测视频 |
 | 求职效应 | 技能清单与真实职缺要求高度重合：STM32 · FreeRTOS · Bootloader · FOTA · Modbus · MQTT · BLE |
 | 时间假设 | 每周 10–15 小时，总计约 7 周（W4 出 v1 即可开始投标） |
 
-## 3. 范围
+## 3. 技术定位：三大可量测主张
+
+| 客户恐惧 | 对应主张 | 证据形态 |
+|---|---|---|
+| 「装置跑一跑就挂？」 | 主张 2：可靠性 | 断电酷刑视频 + 故障测试报告 |
+| 「系统慢、卡？」 | 主张 1：即时性 | 示波器截图 + 延迟直方图 |
+| 「韧体是黑箱，出问题怎么办？」 | 主张 3：可观测性 | 诊断暂存器文档 + CI 绿灯 |
+| 「代码是意大利面？」 | 主张 3（工程流程） | 单元测试 + CI + 分层架构 |
+
+### 主张 1：即时性——「最坏情况也不抖」
+- **量测手段**：Cortex-M DWT cycle counter（硬件级精确量测，零成本）；预留 GPIO benchmark 脚供示波器捕捉
+- **量测项**：中断→响应延迟、任务唤醒 jitter、Modbus 请求→响应延迟、感测→上云 端到端延迟
+- **方法论**：在压测模式（所有任务满载、队列打满）下取**最坏值 / p99**；禁止只报平均值
+- **证据**：示波器截图、延迟直方图、README「Measured, not claimed」数据表
+
+### 主张 2：可靠性——「怎么杀都杀不死」
+- **断电酷刑测试**：运行中 / OTA 中随机断电，展示自动恢复；RCC reset-cause 旗标区分看门狗/断电/软件重置并记录（视频一放，观众立刻看懂）
+- **I2C bus lockup 自动恢复**：toggle SCL 直至 SDA 释放，加恢复计数器
+- **7 天浸泡测试**：错误计数、stack watermark、heap 碎片全程上报，验证零劣化
+- **证据**：断电实测视频（作品集最强记忆点）、故障矩阵测试报告
+
+### 主张 3：可观测性——「装置透明如仪表板」
+- **诊断模块（一级公民，非附属）**：每任务 stack watermark、heap free/最大块、各外设错误计数、uptime、reset-cause、DWT 延迟统计
+- **暴露通道**：Modbus 诊断暂存器块 + 协议 `DIAG_REPORT` 帧 → ESP32 → MQTT status topic
+- **工程流程**：协议解析器写成平台无关纯 C 库 → PC 端单元测试（Unity）→ GitHub Actions CI（每次 push 自动构建双固件 + 跑测试 + cppcheck 静态分析）
+- **证据**：CI 截图、测试覆盖说明、诊断暂存器表文档
+
+### 诚实原则
+所有数字必须真实、可复现、附测试方法；数据平平也如实公布——「诚实 + 可验证」本身就是差异化，过度包装反而毁掉信任。
+
+## 4. 范围
 
 ### v1（W1–W4）——工业数据记录器
 - STM32F411 + FreeRTOS：感测取样、SD 卡记录、Modbus RTU slave
 - ESP32-S3 协处理器：WiFi + MQTT 上云、BLE 配网
 - 自订 UART 帧协定（帧格式与 OTA 指令集在本阶段定案）
+- **证据基建（从第一天埋点）**：诊断/统计模块、DWT 埋点 + benchmark GPIO、压测模式、I2C bus 恢复、协议库 PC 单元测试 + CI
 - Node-RED 仪表板演示
 
 ### v2（W5–W7）——安全 FOTA
 - STM32 Bootloader + A/B 双槽 + 断电恢复 + 自动回滚
 - ESP32 侧 HTTP 韧体下载 + 串流推送
 - Node-RED 一键触发升级演示
+- **证据采集**：断电酷刑测试 + 视频、7 天浸泡测试
 
 ### 明确不做（记入 repo roadmap）
 - OTA 以外的 ESP32 自我更新机制、以太网路
 - 第二垂直场景（仪控/医疗）的实作（仅写扩展文档）
 - 低功耗（属项目 1：ESP32 低功耗感测节点的卖点）
 - 固件安全签名（v2 用 SHA256 完整性验证，签名列入 roadmap）
+- 为追求极限性能数字而牺牲代码可读性——量测 + 诚实呈现即可
 
-## 4. 系统架构
+## 5. 系统架构
 
 ```
                  ┌────────────── 云端 ──────────────┐
@@ -59,14 +95,16 @@
 │  • BLE：装置配网（写入 WiFi 帐密、读取状态）              │
 │  • 协议 slave 端（UART，同款帧格式）                      │
 │  • v2: HTTP 固件下载 + 串流推送                          │
-└───────────────────────────┬───────────────────────────┘
+└───────────────────────────┴───────────────────────────┘
                             │ UART + 自订帧协议 (CRC16, ACK/重传)
 ┌───────────────────────────┴───────────────────────────┐
 │  STM32F411（主控，FreeRTOS）                            │
 │  ┌─ 应用层：工业数据记录器（v1 实作）                    │
-│  ├─ 平台服务层：配置存储、日志管理、时间同步、健康监控     │
+│  ├─ 平台服务层：配置存储、日志管理、时间同步、            │
+│  │              健康监控/诊断（一级公民）                │
 │  ├─ 中间层：Modbus RTU slave、双MCU协议栈、FATFS         │
-│  └─ BSP/驱动层：I2C 感测器、UART+DMA、RS485、SD 卡       │
+│  └─ BSP/驱动层：I2C 感测器（含 bus 恢复）、UART+DMA、    │
+│                 RS485、SD 卡、DWT/GPIO 埋点             │
 └───────────────────────────┬───────────────────────────┘
         │ I2C                │ UART                 │ SPI
    BME280 温湿度          MAX485 (RS485)        MicroSD 记录
@@ -75,7 +113,7 @@
 
 **职责划分**：ESP32 = 通讯专家（联网、配网、OTA 下载源）；STM32 = 应用大脑（感测、记录、工业协议、装置逻辑）。
 
-## 5. 硬件
+## 6. 硬件
 
 ### BOM（约 $55–70）
 
@@ -100,10 +138,11 @@
 | I2C1 | BME280（0x76）、MPU6050（0x68）、OLED（0x3C） |
 | SPI1 | MicroSD（FATFS） |
 | IWDG | 看门狗 |
+| DWT + 2×GPIO | 延迟量测埋点 + 示波器 benchmark 脚 |
 
 **电平说明**：两颗 MCU IO 均为 3.3V，无需电平转换；共地。USB 5V 供电。
 
-## 6. 双 MCU 通信协议（作品集核心亮点）
+## 7. 双 MCU 通信协议（作品集核心亮点）
 
 ### 帧格式
 
@@ -121,6 +160,7 @@
 |---|---|---|
 | PING / HEARTBEAT | 双向 | 存活检测，超时判定协处理器离线 |
 | DATA_REPORT | STM32→ESP32 | 感测数据上云 |
+| DIAG_REPORT | STM32→ESP32 | 诊断数据上云（错误计数、stack watermark、heap、reset-cause 等） |
 | MQTT_PUB / MQTT_SUB | 双向 | 云端发布/订阅透传 |
 | WIFI_CONFIG_SET/GET | STM32→ESP32 | BLE 配网流程中写入凭据 |
 | NET_STATUS | ESP32→STM32 | RSSI、IP、MQTT 连线状态 |
@@ -131,32 +171,36 @@
 
 **交付物**：独立协议规格书（英文），含状态机图与时序图。
 
-## 7. STM32 软件架构
+## 8. STM32 软件架构
 
 | 任务 | 职责 |
 |---|---|
 | `SensorTask` | 周期取样 BME280 + MPU6050，推入 sensorQ |
 | `LoggerTask` | sensorQ → SD 卡 FATFS（按日轮替档案） |
-| `ModbusTask` | RS485 slave，暂存器表暴露最新感测值+诊断计数 |
-| `CommTask` | 双 MCU 协议状态机（帧解析、ACK、重传） |
-| `AppTask` | 主状态机 INIT→CONFIG→RUN→FAULT；监控各任务健康 |
+| `ModbusTask` | RS485 slave，暂存器表暴露最新感测值 + **诊断暂存器块** |
+| `CommTask` | 双 MCU 协议状态机（帧解析、ACK、重传、DIAG_REPORT 周期上报） |
+| `AppTask` | 主状态机 INIT→CONFIG→RUN→FAULT；聚合诊断、监控各任务健康 |
 
 - 队列：`sensorQ`、`logQ`、`commTxQ`；共享状态用 mutex
 - IWDG 看门狗；错误计数器纳入 Modbus 诊断暂存器
-- 逻辑分层强制：`app/`（垂直场景）｜`platform/`（配置存储、日志管理、时间同步、健康监控、通讯管理）｜`middleware/`（Modbus、协议栈、FATFS）｜`drivers/`
-- 配置不写死：装置 ID、取样率、MQTT topic 存于 Flash 配置区
+- **诊断/统计模块**（platform 层，一级公民）：stack watermark、heap、外设错误计数、uptime、reset-cause（RCC 旗标）、DWT 延迟统计
+- **I2C 驱动内建 bus lockup 恢复**（toggle SCL）+ 恢复计数
+- **压测模式**（配置开关）：所有任务满载运行，供最坏情况量测
+- 逻辑分层强制：`app/`（垂直场景）｜`platform/`（配置存储、日志管理、时间同步、健康监控/诊断、通讯管理）｜`middleware/`（Modbus、协议栈、FATFS）｜`drivers/`
+- **协议解析器为平台无关纯 C 库**（`middleware/coproc_proto/`），可在 PC 编译跑单元测试
+- 配置不写死：装置 ID、取样率、MQTT topic、压测开关存于 Flash 配置区
 
-## 8. ESP32 软件架构（ESP-IDF，非 Arduino）
+## 9. ESP32 软件架构（ESP-IDF，非 Arduino）
 
 | 模块 | 职责 |
 |---|---|
 | `proto_slave` | 协议 slave 端（与 STM32 同款帧格式，镜像状态机） |
 | `wifi_mgr` | WiFi 连线管理、断线重连 |
 | `ble_provision` | BLE GATT 配网（写 WiFi 凭据、读装置状态） |
-| `mqtt_client` | 上云数据、接收云端指令转协议帧 |
+| `mqtt_client` | 上云数据、诊断 status topic、接收云端指令转协议帧 |
 | `ota_downloader` (v2) | HTTP 下载固件至自身 flash 分区、SHA256 校验、串流推送 |
 
-## 9. OTA 设计（v2）
+## 10. OTA 设计（v2）
 
 ### 记忆体映射（STM32F411RET6，512KB Flash，对齐硬件 sector）
 
@@ -181,7 +225,7 @@ Metadata 存版本号、影像 SHA、更新旗标、回滚计数。
 5. Bootloader 验证 Staging → 启动新影像
 6. 新影像完成自我测试后回报 healthy；若 N 次开机内未回报或看门狗重置 → 自动回滚旧版
 
-### 故障矩阵（v2 测试项）
+### 故障矩阵（v2 测试项 = 酷刑测试剧本）
 
 | 故障 | 预期行为 |
 |---|---|
@@ -189,46 +233,48 @@ Metadata 存版本号、影像 SHA、更新旗标、回滚计数。
 | 影像损坏 | SHA256 验证挡下，拒绝写入 pending |
 | 新版崩溃 | 回滚计数超限，Bootloader 还原旧版 |
 | 重启后断电 | Metadata 旗标设计保证幂等/可恢复 |
+| 运行中随机断电（酷刑测试） | reset-cause 记录 + 自动恢复，无人工干预 |
 
-## 10. 模板化与垂直扩展
+## 11. 模板化与垂直扩展
 
 - v1 只实作 `app/industrial_logger/`，README 附**平台扩展指南**
 - 仪控版（设计文件层级）：OLED 显示 + 量测量测 + 简易指令介面，仅替换 app 层
 - 医疗版（设计文件层级）：BLE GATT 生命征象节点（如 MAX30102）+ 安全记录，仅替换 app 层
 - 扩展指南说明：新增垂直场景所需改动清单 = 新 app 目录 + 配置档案 + （视需要）新驱动
 
-## 11. 云端与演示
+## 12. 云端与演示
 
 - 本机 Mosquitto broker + Node-RED 仪表板（工业界标准工具）
-- Topic 设计：`indulogger/<devid>/data`、`.../status`、`.../cmd`（升级指令走 cmd）
-- 演示脚本：BLE 配网 → WiFi 上云 → 看板即时数据 → Modbus 轮询（USB-RS485）→ SD 卡内容 →（v2）看板一键升级 + 断电实测
+- Topic 设计：`indulogger/<devid>/data`、`.../diag`（诊断）、`.../status`、`.../cmd`（升级指令走 cmd）
+- 演示脚本：BLE 配网 → WiFi 上云 → 看板即时数据 → Modbus 轮询（USB-RS485）→ SD 卡内容 →（v2）看板一键升级 + **断电酷刑实测**
 
-## 12. 工具链
+## 13. 工具链
 
-STM32CubeIDE（真实职缺常指定）、ESP-IDF、Node-RED、Git/GitHub
+**STM32CubeMX（CMake 输出）+ arm-none-eabi-gcc + CMake/Ninja + VSCode**——选择理由：CI（第 3 节主张 3 要求 GitHub Actions 每次 push 自动构建固件）必须无头构建，CubeIDE 的 IDE 工程不利于 CI；CubeMX 生成的 CMake 工程同样覆盖职缺关键词（STM32CubeMX/STM32/GCC/FreeRTOS）。OpenOCD + ST-Link 烧录（usbipd-win 通路）。ESP-IDF、Node-RED、Git/GitHub、GitHub Actions（CI：双固件构建 + 协议库单元测试 + cppcheck）、Unity（PC 端单元测试框架）。
 
-## 13. 里程碑
+## 14. 里程碑
 
 | 週 | 目标 | 出货点 |
 |---|---|---|
-| W1 | CubeIDE 工程 + FreeRTOS 任务骨架 + 感测驱动 + SD 记录 | — |
-| W2 | Modbus RTU slave + 协议栈（STM32 端）；ESP32 WiFi/MQTT | — |
-| W3 | BLE 配网 + 系统整合 + Node-RED 看板 | — |
-| W4 | 文档打磨、协议规格书、平台指南、演示视频 | ✅ v1 上架作品集，可开始投标 |
+| W1 | CubeMX(CMake) 工程 + FreeRTOS 任务骨架 + 感测驱动 + SD 记录 + **诊断/埋点骨架（DWT、benchmark GPIO、stats 模块、reset-cause）** + CI 上线 | — |
+| W2 | Modbus RTU slave + 协议栈（STM32 端）+ **协议库 PC 单元测试 + CI 上线**；ESP32 WiFi/MQTT | — |
+| W3 | BLE 配网 + 系统整合 + Node-RED 看板 + **诊断端到端（Modbus 诊断暂存器 + diag topic）** + I2C 恢复 | — |
+| W4 | 文档打磨 + **压测模式基准量测 + 验证报告 v1** + 协议规格书、平台指南、演示视频（约多花 2–3 天，总时程不变） | ✅ v1 上架作品集，可开始投标 |
 | W5 | Bootloader + 记忆体映射 + OTA 协定（STM32 端） | — |
-| W6 | ESP32 下载串流 + Node-RED 触发 + 故障矩阵实测 | — |
-| W7 | OTA 文档 + 测试矩阵 + 断电实测视频 | ✅ 旗舰作品完成 |
+| W6 | ESP32 下载串流 + Node-RED 触发 + 故障矩阵实测 + **断电酷刑测试 + 视频拍摄** + **启动 7 天浸泡测试（背景运行）** | — |
+| W7 | OTA 文档 + 测试矩阵 + 断电实测视频 + **浸泡测试报告**（若时程挤压，浸泡测试可延后发布为文件增补） | ✅ 旗舰作品完成 |
 
-## 14. 交付物清单
+## 15. 交付物清单
 
-1. GitHub repo：英文 README（架构图、接线图、quickstart）
+1. GitHub repo：英文 README（架构图、接线图、quickstart、**「Measured, not claimed」数据表**）
 2. 双 MCU 协议规格书（英文，含状态机/时序图）
 3. 平台扩展指南（仪控/医疗怎么套）
 4. v1 演示视频（90 秒）
-5. v2：OTA 设计文档 + 故障测试矩阵 + **断电实测视频**
-6. Upwork portfolio 条目 + 个人定位文案（Firmware Engineer | STM32 · ESP32 · FreeRTOS · FOTA）
+5. v2：OTA 设计文档 + 故障测试矩阵 + **断电实测视频（酷刑测试）**
+6. **验证报告（英文）**：基准量测数据（延迟/jitter 直方图）+ 故障注入结果 + 浸泡测试结果
+7. Upwork portfolio 条目 + 个人定位文案（Firmware Engineer | STM32 · ESP32 · FreeRTOS · FOTA | *measured, not claimed*）
 
-## 15. 风险与对策
+## 16. 风险与对策
 
 | 风险 | 对策 |
 |---|---|
@@ -237,3 +283,5 @@ STM32CubeIDE（真实职缺常指定）、ESP-IDF、Node-RED、Git/GitHub
 | 协议调试耗时 | 先用 USB-TTL + PC 模拟对端（Python 脚本）单元验证，再联机 |
 | W4 后求职分心 | v1 即可投标；v2 与投标并行，时间表弹性后移 |
 | 公司 email 出现在公开 repo | 推 GitHub 前改用个人 email 的 git identity |
+| 量测数字不如预期 | 如实公布 + 说明方法；诚实可验证本身就是卖点，不造假、不挑数据 |
+| 浸泡测试占墙钟时间 | W6 特征冻结即启动背景运行；来不及就作为发布后增补文件 |

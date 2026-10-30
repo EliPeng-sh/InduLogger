@@ -8,7 +8,7 @@
 
 **Tech Stack:** C11 · STM32F411RE (Nucleo) · FreeRTOS (raw API, heap_4) · STM32CubeMX (CMake output) · arm-none-eabi-gcc 14.2.1 · CMake 4.4 + Ninja · OpenOCD (flash via ST-Link/usbipd-win) · Unity (host tests) · GitHub Actions
 
-**Spec:** `docs/specs/2026-10-27-indulogler-design.md` (Milestone = spec §14 row W1; evidence infra = spec §3/§4 v1 "证据基建" items; watchdog/health = §8)
+**Spec:** `docs/specs/2026-10-27-indulogger-design.md` (Milestone = spec §14 row W1; evidence infra = spec §3/§4 v1 "证据基建" items; watchdog/health = §8)
 
 ## Global Constraints
 
