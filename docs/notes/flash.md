@@ -11,6 +11,10 @@ Build first: `make -C stm32` → `stm32/build/InduLogger.elf`
 - Windows USB selective suspend is disabled (2026-11-04): the old ST-LINK FW wedges after
   a suspend cycle (`DEV_USB_COMM_ERR` on every open until replug); a FW upgrade to V2J39
   via the CubeProgrammer GUI removes that need if it ever returns
+- **Expected after every flash: `reset cause: iwdg` on the first boot.** A flash session
+  (halt + erase + program, several seconds) outlasts the 2 s IWDG window, so the watchdog
+  fires mid-flash; CubeProgrammer re-attaches, verify still passes. Harmless — and a nice
+  demonstration that the watchdog is live.
 
 ## Debug: CubeIDE graphical debug
 

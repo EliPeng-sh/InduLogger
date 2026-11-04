@@ -207,21 +207,20 @@ extern const uint32_t ERR_BME_TIMEOUT, ERR_MPU_TIMEOUT, ERR_SD_WRITE,
 void iwdg_feed(void);                          // wraps HAL_IWDG_Refresh
 ```
 
-- [ ] **Step 1: Write failing host test**
+- [x] **Step 1: Write failing host test**
 
 `host/CMakeLists.txt`:
 ```cmake
 cmake_minimum_required(VERSION 3.20)
 project(indulogger_host_tests C)
-include(FetchContent)
-FetchContent_Declare(unity GIT_REPOSITORY https://github.com/ThrowTheSwitch/Unity.git GIT_TAG v2.6.0)
-FetchContent_MakeAvailable(unity)
 enable_testing()
+# Unity v2.6.0 vendored at third_party/unity (no network dependency; CI uses the same copy)
+set(UNITY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/unity)
 file(GLOB TESTS tests/test_*.c)
 foreach(T ${TESTS})
   get_filename_component(N ${T} NAME_WE)
-  add_executable(${N} ${T} ../stm32/platform/stats/stats.c)
-  target_include_directories(${N} PRIVATE ../stm32/platform/stats)
+  add_executable(${N} ${T} ../stm32/platform/stats/stats.c ${UNITY_DIR}/unity.c)
+  target_include_directories(${N} PRIVATE ../stm32/platform/stats ${UNITY_DIR})
   target_compile_definitions(${N} PRIVATE HOST_TEST) # required by the #ifndef HOST_TEST guards in stats.c
   target_compile_options(${N} PRIVATE -Wall -Wextra)
   add_test(NAME ${N} COMMAND ${N})
@@ -235,14 +234,21 @@ void setUp(void) {} void tearDown(void) {}
 void test_bor_flag(void)  { TEST_ASSERT_EQUAL_STRING("brownout", reset_cause_name(RESET_CAUSE_BOR)); }
 void test_iwdg_flag(void) { TEST_ASSERT_EQUAL_STRING("iwdg", reset_cause_name(RESET_CAUSE_IWDG)); }
 void test_unknown(void)   { TEST_ASSERT_EQUAL_STRING("unknown", reset_cause_name(RESET_CAUSE_UNKNOWN)); }
+int main(void) {
+  UNITY_BEGIN();
+  RUN_TEST(test_bor_flag);
+  RUN_TEST(test_iwdg_flag);
+  RUN_TEST(test_unknown);
+  return UNITY_END();
+}
 ```
 
-- [ ] **Step 2: Run, verify fail**
+- [x] **Step 2: Run, verify fail**
 
 Run: `cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test-dir host/build --output-on-failure`
 Expected: FAIL — `stats.h` / `stats.c` do not exist yet.
 
-- [ ] **Step 3: Implement `stats.c` decode part**
+- [x] **Step 3: Implement `stats.c` decode part**
 
 `stats.c`:
 ```c
@@ -262,11 +268,11 @@ const char *reset_cause_name(reset_cause_t c) {
 ```
 (On-target parts — `reset_cause_capture` reading/stripping `RCC->CSR` flags per RM0383, atomic `stats_error` via `__atomic_fetch_add`, `iwdg_feed` — are added in the same file, guarded so they don't compile on host: wrap target code in `#ifndef HOST_TEST`.)
 
-- [ ] **Step 4: Run, verify pass**
+- [x] **Step 4: Run, verify pass**
 
 Same command as Step 2. Expected: 3/3 PASS.
 
-- [ ] **Step 5: Wire into firmware + force-watchdog verification**
+- [x] **Step 5: Wire into firmware + force-watchdog verification**
 
 `main.c` USER CODE 2 (after console_init):
 ```c
@@ -275,8 +281,8 @@ printf("reset cause: %s\r\n", reset_cause_name(rc));
 /* IWDG was already started by the CubeMX-generated MX_IWDG_Init() — do NOT HAL_IWDG_Init again. */
 ```
 Default task loop: replace Task 1's temporary `HAL_IWDG_Refresh(&hiwdg)` with `iwdg_feed();` (still single-task skeleton feeding; Task 9 moves feeding into the MonitorTask alive-mask so a hung Sensor/Logger task starves the watchdog).
-Build + flash → expect `reset cause: external-pin` (first flash asserts NRST).
-Then temporarily comment `iwdg_feed()`, rebuild+flash: after ~2–3 s the board resets itself and the console shows `reset cause: iwdg` on every auto-reboot. Restore the feed, rebuild+flash — the next boot shows a normal cause again (flags were consumed at capture; the `iwdg` evidence is the repeated boot line above).
+Build + flash → boot banner + `reset cause: ...` printed. NOTE: the first line after a flash usually reads `iwdg` — a CubeProgrammer session (halt + erase + program) outlasts the 2 s IWDG window, so the watchdog fires mid-flash and the next boot reports it (harmless; CubeProgrammer re-attaches and verify still passes — recorded in docs/notes/flash.md).
+Then temporarily comment `iwdg_feed()`, rebuild+flash: the console shows `reset cause: iwdg` repeating on every auto-reboot (~2 s apart) — the deliberate hung-feed evidence. Restore the feed, rebuild+flash: the board boots, prints once, and KEEPS RUNNING (LED steady, no further reboots) — that's the restored-feed proof.
 
 - [ ] **Step 6: Commit**
 

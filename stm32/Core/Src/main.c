@@ -23,7 +23,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 #include "platform/console/console.h"
+#include "platform/stats/stats.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -116,6 +118,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP; /* pause IWDG under debugger */
   console_init(); /* banner + printf retarget over ST-LINK VCP */
+  printf("reset cause: %s\r\n", reset_cause_name(reset_cause_capture()));
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -443,7 +446,7 @@ void StartDefaultTask(void const * argument)
   /* USER CODE BEGIN 5 */
   for (;;) {
     HAL_GPIO_TogglePin(LED_HEARTBEAT_GPIO_Port, LED_HEARTBEAT_Pin);
-    HAL_IWDG_Refresh(&hiwdg); /* temporary single-task skeleton; Task 4 swaps in iwdg_feed(), Task 9 moves feeding to the Monitor alive-mask */
+    iwdg_feed(); /* single-task skeleton feeding; Task 9 moves feeding to the Monitor alive-mask */
     vTaskDelay(pdMS_TO_TICKS(500));
   }
   /* USER CODE END 5 */
