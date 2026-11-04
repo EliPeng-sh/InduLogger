@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-> **Revised 2026-10-30 after technical review:** float-printf linker flag (T1), `setvbuf` in console (T3), IWDG ~2 s + fed from first boot + debug freeze (T1/T4), `-DHOST_TEST` in host build (T4), cppcheck CI job + download de-risk note (T5), BME280 config/trim fixes + defaultTask stack 512 + watermark (T6), MPU6050 clone-ID note (T7), bounded SPI timeouts + 12.5 MHz (T8), alive-mask watchdog + hung-task check (T9); schedule re-baselined M1 → W1–W2 (spec §14 shifted one week, v1 ship point W4→W5).
+> **Revised 2026-10-30 after technical review:** float-printf linker flag (T1), `setvbuf` in console (T3), IWDG ~2 s + fed from first boot + debug freeze (T1/T4), `-DHOST_TEST` in host build (T4), cppcheck CI job + download de-risk note (T5), BME280 config/trim fixes + defaultTask stack 512 + watermark (T6), MPU6050 clone-ID note (T7), bounded SPI timeouts + 12.5 MHz (T8), alive-mask watchdog + hung-task check (T9); schedule re-baselined M1 → W1–W2 (spec §14 shifted one week, v1 ship point W4→W5); timebase TIM6→TIM11 (the F411 has no TIM6/TIM7 basic timers — caught at Task 1 execution); build pivoted to repo Makefile + apt arm-gcc 14.2.1 (CubeIDE managed build retired — UNC makefile breakage), flash via `make flash` (CubeProgrammer CLI 2.22.0, WSL interop).
 
 **Goal:** STM32F411 + FreeRTOS skeleton that samples BME280/MPU6050, logs CSV to SD card, prints live diagnostics over the debug UART, runs under IWDG watchdog, with DWT/GPIO instrumentation and CI (firmware build + host unit tests) green on every push.
 
-**Architecture:** STM32CubeIDE (Windows) hosts the F411 project (100 MHz, CubeMX engine via `InduLogger.ioc`) at `stm32/`; application code lives in `app/`, `platform/`, `drivers/` per the spec's layered structure. Platform-independent logic (reset-cause decode, CSV formatting, sensor plausibility) is TDD'd on the host with Unity; hardware interaction is verified by on-target smoke steps with expected console output. CI builds firmware headlessly with CubeIDE and runs host tests on every push.
+**Architecture:** STM32CubeIDE (Windows) hosts the F411 project (100 MHz, CubeMX engine via `InduLogger.ioc`) at `stm32/`; application code lives in `app/`, `platform/`, `drivers/` per the spec's layered structure. Platform-independent logic (reset-cause decode, CSV formatting, sensor plausibility) is TDD'd on the host with Unity; hardware interaction is verified by on-target smoke steps with expected console output. CI builds firmware with the repo Makefile + arm-none-eabi-gcc and runs host tests on every push.
 
-**Tech Stack:** C11 · STM32F411RE (Nucleo) · FreeRTOS (raw API, heap_4) · STM32CubeIDE (Windows native, embeds CubeMX; headless build in CI) · Unity (host tests) · GitHub Actions
+**Tech Stack:** C11 · STM32F411RE (Nucleo) · FreeRTOS (native API over the CMSIS_V1 wrapper, heap_4) · STM32CubeIDE (Windows native — .ioc codegen + graphical debug only) · repo Makefile + arm-none-eabi-gcc (build) · STM32CubeProgrammer CLI (flash) · Unity (host tests) · GitHub Actions
 
 **Spec:** `docs/specs/2026-10-27-indulogger-design.md` (Milestone = spec §14 row W1–W2; evidence infra = spec §3/§4 v1 "证据基建" items; watchdog/health = §8)
 
@@ -21,8 +21,8 @@
 - Every failure path increments a stats error counter (`stats_error(ERR_x)`) — evidence infra rule from spec §3.
 - Do not edit CubeMX-generated code outside `/* USER CODE BEGIN ... */` sections.
 - Comments/docs in English; commit messages in Conventional Commits; one commit per task.
-- Recorded toolchain versions: STM32CubeIDE version + its bundled arm-none-eabi-gcc (record at first install/build — see `docs/notes/toolchain.md`), Unity v2.6.0, host gcc/CMake/Ninja for tests. The apt `arm-none-eabi-gcc` toolchain is retired (superseded by CubeIDE's bundled toolchain) — update `docs/notes/toolchain.md` if anything changes.
-- Repo root: `~/InduLogger`. Plans live in `docs/plans/` (repo convention, overriding skill default).
+- Recorded toolchain versions: arm-none-eabi-gcc **14.2.1** (apt) for the Makefile build, CubeMX 6.12.1 / FW_F4 V1.28.3 (via CubeIDE) for codegen, STM32CubeProgrammer CLI 2.22.0 for flash, Unity v2.6.0, host gcc/CMake/Ninja for tests — see `docs/notes/toolchain.md`.
+- Repo root: `D:\InduLogger` (WSL: `/mnt/d/InduLogger`) — relocated from `~/InduLogger` on 2026-11-04: CubeIDE managed build works natively on the drive-letter path, while the WSL UNC path baked broken absolute paths into its makefiles. Plans live in `docs/plans/` (repo convention, overriding skill default).
 
 ## Review Focus
 
@@ -37,20 +37,20 @@
 ### Task 1: CubeIDE project scaffold + local firmware build
 
 **Files:**
-- Create: `stm32/` (CubeIDE project: `InduLogger.ioc`, `.project`, `.cproject`, `.mxproject`, `.settings/`, `Core/`, `Drivers/`, `Middlewares/`)
-- Modify: `stm32/Core/Src/main.c` (IWDG debug-freeze one-liner, USER CODE 2)
+- Create: `stm32/` (CubeIDE project: `InduLogger.ioc`, `.project`, `.cproject`, `.mxproject`, `.settings/`, `Core/`, `Drivers/`, `Middlewares/`) + `stm32/Makefile` (canonical build entry — see Step 5)
+- Modify: `stm32/Core/Src/main.c` (IWDG debug-freeze one-liner, USER CODE 2; default-task heartbeat/feed — this CubeMX generates task functions in main.c, not freertos.c)
 - Modify: `.gitignore` (already covers `stm32/**/Debug/`, `stm32/**/Release/`; committed in Phase 0)
 - Already committed: `docs/notes/toolchain.md` (rewritten in Phase 0 for CubeIDE)
 
 **Interfaces:**
-- Produces: `stm32/Debug/InduLogger.elf` build path used by Task 2 (flash) and CI (Task 5); FreeRTOS enabled with raw API; peripherals: USART2 (debug, 115200 8N1), I2C1 (400 kHz, PB8/PB9), SPI1 (PB3/PB4/PB5) + GPIO PA4 `SD_CS`, USART1 (PA9/PA10, 115200, for W2 co-processor link), IWDG (~2 s timeout — see step 9; the 1 s alive-check cadence used from Task 9 needs ≥2× margin), GPIO outputs PA5 (onboard LED `LED_HEARTBEAT`), PB0 `BENCH_GPIO1`, PB1 `BENCH_GPIO2`; HAL timebase on TIM6; newlib-nano float printf enabled via `-u _printf_float` (step 1 item 13).
+- Produces: `stm32/build/InduLogger.elf` build path used by Task 2 (flash) and CI (Task 5); FreeRTOS enabled (CMSIS_V1 wrapper — CubeMX ≥6.11 removed the wrapper-free raw option, *Disable* removes the kernel entirely; app code uses native FreeRTOS API); peripherals: USART2 (debug, 115200 8N1), I2C1 (400 kHz, PB8/PB9), SPI1 (PB3/PB4/PB5) + GPIO PA4 `SD_CS`, USART1 (PA9/PA10, 115200, for W2 co-processor link), IWDG (~2 s timeout — see step 9; the 1 s alive-check cadence used from Task 9 needs ≥2× margin), GPIO outputs PA5 (onboard LED `LED_HEARTBEAT`), PB0 `BENCH_GPIO1`, PB1 `BENCH_GPIO2`; HAL timebase on TIM11; newlib-nano float printf enabled via `-u _printf_float` (step 1 item 13).
 
-- [ ] **Step 1: Create the project in STM32CubeIDE (Windows)**
+- [x] **Step 1: Create the project in STM32CubeIDE (Windows)**
 
 Install STM32CubeIDE (myST account required; no board needed), workspace at a Windows-local dir, e.g. `C:\CubeIDE-workspace`. Then:
 1. File → New → STM32 Project → **MCU/MPU Selector**: **STM32F411RETx**. Name `InduLogger`; uncheck *Use default location*, browse to `\\wsl.localhost\<distro>\home\eli_peng\InduLogger\stm32`. If CubeIDE mishandles the UNC path, create in `C:\temp\InduLogger\stm32`, copy the folder into `~/InduLogger/stm32`, then File → Open Projects. Language **C**, binary *Embedded*.
 2. The `.ioc` editor (embedded CubeMX) opens. **RCC**: HSE = *Crystal/Resonator → Bypass Clock Source* (Nucleo feeds 8 MHz from ST-LINK MCO).
-3. **SYS**: Debug = *Serial Wire*; Timebase Source = **TIM6** (not SysTick, FreeRTOS owns SysTick).
+3. **SYS**: Debug = *Serial Wire*; Timebase Source = **TIM11** (not SysTick, FreeRTOS owns SysTick; the F411 has no TIM6/TIM7 basic timers — TIM11 is the least-contended spare).
 4. **Clock Configuration**: HSE 8 MHz → PLL M=/4, N=×100, P=/2 → SYSCLK = **100 MHz**; AHB /1 = 100 MHz; APB1 /2 = **50 MHz**; APB2 /1 = 100 MHz.
 5. **USART2** (PA2/PA3): Asynchronous, 115200, 8N1 (ST-LINK VCP).
 6. **I2C1**: I2C mode, Fast Mode 400 kHz (PB8=SCL, PB9=SDA).
@@ -58,48 +58,47 @@ Install STM32CubeIDE (myST account required; no board needed), workspace at a Wi
 8. **USART1** (PA9/PA10): Asynchronous, 115200; NVIC: USART1 global interrupt enabled; DMA: USART1_RX (Normal). (Used in W2; pin/NVIC only now.)
 9. **IWDG**: Prescaler 32, Counter Reload 1999 (LSI 32 kHz / 32 = 1 kHz tick → ~2 s timeout; the Task 9 Monitor alive-check feeds at 1 s cadence, so the timeout needs that margin).
 10. **GPIO outputs**: PA5 label `LED_HEARTBEAT` (onboard LD2, output low), PB0 label `BENCH_GPIO1`, PB1 label `BENCH_GPIO2`.
-11. **Middleware**: FreeRTOS — Interface: *CMSIS-FreeRTOS unchecked* (raw API); Heap: **heap_4**; TOTAL_HEAP_SIZE = **30720**; TICK_RATE 1000 Hz.
-12. **FATFS**: check "User-defined" (SD via SPI arrives in Task 8; enabling now avoids re-gen surprises). Set `_FS_TINY = 0`, `_USE_LFN = 1`.
+11. **Middleware**: FreeRTOS — Interface = **CMSIS_V1** (thinnest wrapper; the legacy raw-API checkbox is gone in CubeMX ≥6.11 and *Disable* removes the kernel entirely — native FreeRTOS API works throughout); Heap: **heap_4**; TOTAL_HEAP_SIZE = **30720**; TICK_RATE 1000 Hz.
+12. **FATFS**: check "User-defined" (SD via SPI arrives in Task 8; enabling now avoids re-gen surprises). Set `_FS_TINY = 0` (UI checkbox **Disable** — Enable/Disable map to 1/0); `_USE_LFN` = **Enabled with dynamic working buffer on the STACK** (~514 B transient per file op — deterministic, no heap; the old "static BSS" option was removed in CubeMX ≥6.11 and the HEAP variant maps to `ff_malloc`, violating the no-malloc rule). Keep `FF_MAX_LFN = 255`.
 13. **Linker float printf**: Project → Properties → C/C++ Build → Settings → Tool Settings → MCU GCC Linker → Miscellaneous: add `-u _printf_float`, in **both Debug and Release** configurations. CubeIDE links newlib-nano, which silently drops `%f` output without this flag — every sensor print from Task 6 on depends on it.
 14. Click **Generate Code** (build tooling is CubeIDE's managed build — nothing to select).
 
-- [ ] **Step 2: Verify generated tree**
+- [x] **Step 2: Verify generated tree**
 
 Run: `ls stm32` → expect `InduLogger.ioc .project .cproject .mxproject .settings Core Drivers Middlewares`. Build dirs (`Debug/`, `Release/`) are already ignored by `.gitignore` (`stm32/**/Debug/`, `stm32/**/Release/`). Commit `.project`, `.cproject`, `.mxproject`, `.settings/` — they carry the project/toolchain config.
 
-- [ ] **Step 3: Record toolchain versions in `docs/notes/toolchain.md`**
+- [x] **Step 3: Record toolchain versions in `docs/notes/toolchain.md`**
 
 After the first build, record the CubeIDE version (Help → About) and the bundled arm-none-eabi-gcc version (build console banner, or Project → Properties → C/C++ Build → Tool Chain Path) in `docs/notes/toolchain.md`. (File already rewritten in Phase 0; fill in the TBD entries.)
 
-- [ ] **Step 4: Heartbeat + keep the live IWDG fed + IWDG debug freeze**
+- [x] **Step 4: Heartbeat + keep the live IWDG fed + IWDG debug freeze**
 
 CubeMX already generated `MX_IWDG_Init()` in `main.c` (IWDG was activated in step 9), so the watchdog counts from the first boot and **must be fed from day one** — otherwise the board resets every ~2 s from the very first flash.
 
-1. In `stm32/Core/Src/freertos.c`, add `#include "iwdg.h"` to the USER CODE Includes block, then inside the default task loop (`USER CODE` region):
+1. In `stm32/Core/Src/main.c` (this CubeMX generation puts task functions in **main.c**; `freertos.c` only carries hooks), replace the body of `StartDefaultTask` — the `for(;;){ osDelay(1); }` loop inside `/* USER CODE BEGIN 5 */`:
 ```c
-/* USER CODE BEGIN DefaultTask */
 for (;;) {
   HAL_GPIO_TogglePin(LED_HEARTBEAT_GPIO_Port, LED_HEARTBEAT_Pin);
   HAL_IWDG_Refresh(&hiwdg); /* temporary single-task skeleton; Task 4 swaps in iwdg_feed(), Task 9 moves feeding to the Monitor alive-mask */
   vTaskDelay(pdMS_TO_TICKS(500));
 }
-/* USER CODE END DefaultTask */
 ```
+(`hiwdg` is defined in main.c; `cmsis_os.h` already pulls in task.h, so `vTaskDelay` resolves without extra includes.)
 2. In `stm32/Core/Src/main.c`, USER CODE 2: freeze IWDG while the core is halted, so breakpoint debugging stays usable for the rest of M1:
 ```c
 DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP; /* pause IWDG under debugger */
 ```
 
-- [ ] **Step 5: Build locally**
+- [x] **Step 5: Build locally**
 
-In CubeIDE: Project → Build Project.
-Expected: `stm32/Debug/InduLogger.elf` produced, zero warnings (check Console).
+In WSL, from `stm32/`: `make`
+Expected: `stm32/build/InduLogger.elf` + `.bin` produced, zero warnings with -Wall. (Do NOT build via CubeIDE's managed build: with the project on the WSL UNC path it bakes `\\wsl.localhost\...` absolute paths into the generated makefiles and make fails — CubeIDE is used for .ioc codegen and graphical debug only.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add stm32 .gitignore docs/notes/toolchain.md
-git commit -m "feat(stm32): CubeIDE scaffold - 100MHz F411, FreeRTOS raw API, heartbeat"
+git commit -m "feat(stm32): CubeMX scaffold + Makefile build - 100MHz F411, FreeRTOS CMSIS_V1, heartbeat"
 ```
 
 ### Task 2: First flash on target (CubeIDE Run/Debug)
@@ -108,23 +107,26 @@ git commit -m "feat(stm32): CubeIDE scaffold - 100MHz F411, FreeRTOS raw API, he
 - Create: `docs/notes/flash.md` (flash procedure reference)
 
 **Interfaces:**
-- Consumes: `stm32/Debug/InduLogger.elf` (Task 1)
+- Consumes: `stm32/build/InduLogger.elf` (Task 1)
 - Produces: documented flash path used by later tasks (IDE Run/Debug; OpenOCD as backup)
 
 - [ ] **Step 1: Connect the Nucleo (plug-and-play)**
 
 USB to the Windows PC — no usbipd needed for the main path. Device Manager → Ports: expect `STMicroelectronics STLink Virtual COM Port (COMx)`.
 
-- [ ] **Step 2: Flash via CubeIDE**
+- [ ] **Step 2: Flash via `make flash`**
 
-Run As → **STM32 C/C++ Application** (first run creates the config; accept the ST-LINK firmware-upgrade prompt if it appears — normal on first connect).
-Expected: build + flash + run; **LD2 blinks at 1 Hz on the board** (physical observation).
+Plug the Nucleo into the Windows PC (no usbipd needed). From `stm32/`: `make flash`
+(STM32CubeProgrammer CLI via WSL interop: connect ST-LINK SWD, write + verify + run. First connect: accept the ST-LINK firmware-upgrade prompt if the CLI suggests it.)
+Expected: flash + run; **LD2 blinks at 1 Hz on the board** (physical observation).
+Debug alternative: CubeIDE Debug As → STM32 C/C++ Application with auto-build disabled (Build Before Launch = disabled) against the existing `stm32/build/InduLogger.elf` — the managed build is retired.
 
 - [ ] **Step 3: Write `docs/notes/flash.md`**
 
-Document both paths:
-- Main: CubeIDE Run/Debug (steps above).
-- Backup: OpenOCD 0.12 over usbipd-win — PowerShell (Admin): `usbipd bind --hardware-id 0483:3748 && usbipd attach --wsl --hardware-id 0483:3748`, then `openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c "program stm32/Debug/InduLogger.elf verify reset exit"`. Optionally keep `scripts/flash.sh` wrapping the OpenOCD command (ELF default `stm32/Debug/InduLogger.elf`).
+Document all paths:
+- Main: `make flash` (STM32CubeProgrammer CLI v2.22.0 — SWD connect, write + verify + run; ST-LINK on Windows USB, called from WSL via interop).
+- Debug: CubeIDE graphical debug against the prebuilt `stm32/build/InduLogger.elf` (auto-build disabled).
+- Backup: OpenOCD 0.12 over usbipd-win — PowerShell (Admin): `usbipd bind --hardware-id 0483:3748 && usbipd attach --wsl --hardware-id 0483:3748`, then `openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c "program stm32/build/InduLogger.elf verify reset exit"`. Optionally keep `scripts/flash.sh` wrapping the OpenOCD command (ELF default `stm32/build/InduLogger.elf`).
 
 - [ ] **Step 4: Commit**
 
@@ -284,7 +286,7 @@ git commit -m "feat(stats): reset-cause decode (host-TDD), IWDG live, error coun
 - Create: `.github/workflows/ci.yml`
 
 **Interfaces:**
-- Consumes: `host/CMakeLists.txt` (Task 4), `stm32/` CubeIDE project (Task 1)
+- Consumes: `host/CMakeLists.txt` (Task 4), `stm32/Makefile` (Task 1)
 - Produces: green CI badge; artifact `InduLogger.elf` on every push
 
 - [ ] **Step 1: Write workflow**
@@ -306,28 +308,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        id: cubeide
-        with:
-          path: /opt/st
-          key: stm32cubeide-<pin-version-on-first-setup>
-      - name: Install STM32CubeIDE
-        if: steps.cubeide.outputs.cache-hit != 'true'
-        run: |
-          # Pin the direct Linux zip URL from the ST download flow once (license
-          # acceptance may be needed in a browser first). Keep CI on the SAME
-          # version as the local Windows install — single build source.
-          curl -L -o /tmp/cubeide.zip "<PINNED_STM32CUBEIDE_LINUX_ZIP_URL>"
-          unzip -q /tmp/cubeide.zip -d /opt/st
-      - name: Headless build
-        run: |
-          /opt/st/stm32cubeide/stm32cubeide --launcher.suppressErrors -nosplash \
-            -application org.eclipse.cdt.managedbuilder.core.headlessbuild \
-            -data /tmp/ws -import "${{ github.workspace }}/stm32" -cleanBuild InduLogger
+      - run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+      - run: make -C stm32 -j2
       - uses: actions/upload-artifact@v4
         with:
           name: firmware
-          path: stm32/Debug/InduLogger.elf
+          path: stm32/build/InduLogger.elf
   static-analysis:
     runs-on: ubuntu-latest
     steps:
@@ -339,8 +325,6 @@ jobs:
           cppcheck --std=c11 --platform=unix64 --enable=warning,style --error-exitcode=1 \
             --suppress=missingInclude --suppress=missingIncludeSystem $DIRS
 ```
-
-> **De-risking note:** the pinned CubeIDE download URL is the flaky part of this task (myST sessions often block direct `curl` with 403). Before writing the workflow, time-box ~1 h to verify only: download → unzip → `-import` → headless build. If the direct URL fails, mirror the zip once (browser download → private GitHub release / object storage) or set `continue-on-error: true` on the `firmware-build` job until the URL is pinned — `host-tests` and `static-analysis` stay blocking. Budget half a day for this task overall.
 
 - [ ] **Step 2: Push to GitHub, verify green**
 
@@ -511,7 +495,7 @@ git commit -m "feat(sdcard): SPI-SD + FATFS, pull-card and dirty-card fault-inje
 - Create: `stm32/app/industrial_logger/logger_format.h`, `stm32/app/industrial_logger/logger_format.c`
 - Create: `host/tests/test_csv_format.c`
 - Create: `stm32/app/industrial_logger/app_monitor.c`
-- Modify: `host/CMakeLists.txt` (add logger_format.c to sources), `stm32/app/industrial_logger/app_sensors.c`, `app_logger.c`, `stm32/Core/Src/freertos.c` (task creation in USER CODE)
+- Modify: `host/CMakeLists.txt` (add logger_format.c to sources), `stm32/app/industrial_logger/app_sensors.c`, `app_logger.c`, `stm32/Core/Src/main.c` (task creation in `USER CODE RTOS_THREADS` — this CubeMX generates task boilerplate in main.c, not freertos.c)
 - Modify: `stm32/platform/stats/stats.h`, `stm32/platform/stats/stats.c` (alive-mask heartbeat API — see Step 3)
 
 **Interfaces:**
@@ -522,7 +506,7 @@ int logger_format_csv(char *buf, size_t len, uint32_t ts_ms,
                       float t, float h, float p, float ax, float ay, float az);
 // writes "ts,temp,hum,press,ax,ay,az\n" (2 decimals), returns chars written
 extern QueueHandle_t sensorQ; // struct sensor_sample {uint32_t ts_ms; float t,h,p,ax,ay,az;}
-// freertos.c USER CODE: xTaskCreate(SensorTask, "sensor", 512, NULL, 3, NULL);
+// main.c USER CODE RTOS_THREADS: xTaskCreate(SensorTask, "sensor", 512, NULL, 3, NULL);
 // xTaskCreate(LoggerTask, "logger", 1024, NULL, 2, NULL);
 // xTaskCreate(MonitorTask, "monitor", 512, NULL, 1, NULL);
 // stats.h additions (alive-mask watchdog, target-side only, HOST_TEST-guarded):
@@ -553,7 +537,7 @@ Run ctest (Task 4 command) → Expected: FAIL.
 - [ ] **Step 3: Wire tasks + queue + alive-mask watchdog**
   (a) drop-newest policy on full: `xQueueSend` with 0 tick timeout → `stats_error(ERR_Q_DROP)`;
   (b) LoggerTask loop uses `xQueueReceive(..., pdMS_TO_TICKS(250))` and calls `wd_heartbeat(WD_HB_LOGGER)` every iteration — including the empty-queue timeout path, so the heartbeat advances even with no data; SensorTask calls `wd_heartbeat(WD_HB_SENSOR)` every sample;
-  (c) MonitorTask: every 1 s `if (wd_all_alive()) iwdg_feed();`; every 5 s the diagnostics block; **remove** the default task's `iwdg_feed()` (heartbeat LED only from here on);
+  (c) MonitorTask: every 1 s `if (wd_all_alive()) iwdg_feed();`; every 5 s the diagnostics block; **remove** the default task's `iwdg_feed()` in main.c's `StartDefaultTask` (heartbeat LED only from here on);
   (d) LoggerTask writes header line once when file is empty (`f_lseek` end==0 → `"ts_ms,temp_c,hum_pct,press_hpa,ax_g,ay_g,az_g\n"`);
   (e) `stats.{h,c}`: add the four wd_heartbeat items above (target side: `__atomic_fetch_add` per counter + snapshot compare; all inside `#ifndef HOST_TEST` so host builds still pass).
 
@@ -615,7 +599,7 @@ git commit -m "feat(diag): DWT cycle counter + benchmark GPIOs, I2C latency meas
 
 - [ ] **Step 1: Update docs** — README status: "M1 skeleton verified on hardware"; validation index lists: I2C-bounded failures (Task 6), plausibility tests (Task 7), pull-card/dirty-card (Task 8), queue stress (Task 9), DWT latency (Task 10) — each with one-line result and how it was produced.
 
-- [ ] **Step 2: Full clean rebuild + ctest locally, then push** — CubeIDE Project → *Clean…* then *Build Project*, and `ctest --test-dir host/build` → all pass; `git push` → CI green (Actions tab).
+- [ ] **Step 2: Full clean rebuild + ctest locally, then push** — `make -C stm32 clean && make -C stm32` (zero warnings) and `ctest --test-dir host/build` → all pass; `git push` → CI green (Actions tab).
 
 - [ ] **Step 3: Tag milestone** — `git tag -a m1-skeleton -m "STM32 skeleton: sensors+SD+diag+watchdog, CI green" && git push --tags`
 

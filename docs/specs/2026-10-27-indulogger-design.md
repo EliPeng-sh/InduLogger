@@ -250,7 +250,7 @@ Metadata 存版本号、影像 SHA、更新旗标、回滚计数。
 
 ## 13. 工具链
 
-**STM32CubeIDE（Windows 原生，内嵌 CubeMX 引擎）+ Unity（PC 端单元测试）+ GitHub Actions**——选择理由：本地与 CI 共用同一构建来源（CubeIDE 托管构建），CI 用 CubeIDE 无头构建（headlessbuild，安装目录经 Actions cache 摊薄成本），本地结果可复现；IDE 内置 ST-LINK 即插即用，OpenOCD + ST-Link（usbipd-win 通路）仅作备用烧录。覆盖职缺关键词（STM32CubeIDE/STM32/GCC/FreeRTOS）。ESP-IDF、Node-RED、Git/GitHub、GitHub Actions（CI：双固件构建 + 协议库单元测试 + cppcheck）、Unity（PC 端单元测试框架）。
+**repo Makefile + arm-none-eabi-gcc（apt）构建固件 + STM32CubeIDE（仅 .ioc 代码生成与图形调试）+ STM32CubeProgrammer CLI 烧录 + Unity（PC 端单元测试）+ GitHub Actions**——选择理由：本地与 CI 共用同一 Makefile（`stm32/Makefile`），构建不依赖 IDE；CubeIDE 托管构建在 WSL/UNC 工程路径下会把 `\\wsl.localhost` 绝对路径烤进 makefile 导致 make 失败（2026-11-04 实测弃用），故 CubeIDE 退居代码生成与调试；烧录经 WSL interop 直调 Windows 的 CubeProgrammer CLI（免 usbipd），OpenOCD 备用。覆盖职缺关键词（STM32/STM32CubeIDE/GCC/FreeRTOS）。ESP-IDF、Node-RED、Git/GitHub、GitHub Actions（CI：固件构建 + 协议库单元测试 + cppcheck）、Unity（PC 端单元测试框架）。
 
 ## 14. 里程碑
 
