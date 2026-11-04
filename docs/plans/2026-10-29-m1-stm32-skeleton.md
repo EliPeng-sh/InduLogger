@@ -341,7 +341,7 @@ jobs:
             -i host/third_party -i host/build $DIRS
 ```
 
-- [ ] **Step 2: Push to GitHub, verify green**
+- [x] **Step 2: Push to GitHub, verify green**
 
 Create an empty repo `InduLogger` on GitHub (no README/license — the repo has its own), then:
 `git remote add origin git@github.com:<user>/InduLogger.git && git push -u origin main && git push -u origin m1-skeleton`
