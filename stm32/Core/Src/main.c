@@ -23,7 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "platform/console/console.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -115,6 +115,7 @@ int main(void)
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
   DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP; /* pause IWDG under debugger */
+  console_init(); /* banner + printf retarget over ST-LINK VCP */
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */

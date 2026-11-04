@@ -21,7 +21,7 @@ CUBEPROG ?= /mnt/c/Program Files/STMicroelectronics/STM32Cube/STM32CubeProgramme
 
 CPU  := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 DEFS := -DUSE_HAL_DRIVER -DSTM32F411xE
-INC  := -ICore/Inc -IFATFS/Target -IFATFS/App \
+INC  := -I. -ICore/Inc -IFATFS/Target -IFATFS/App \
         -IDrivers/STM32F4xx_HAL_Driver/Inc -IDrivers/STM32F4xx_HAL_Driver/Inc/Legacy \
         -IMiddlewares/Third_Party/FreeRTOS/Source/include \
         -IMiddlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS \

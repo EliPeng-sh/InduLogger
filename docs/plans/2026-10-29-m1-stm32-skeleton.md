@@ -144,17 +144,22 @@ git commit -m "feat: first flash via CubeIDE, LED heartbeat verified"
 **Interfaces:**
 - Produces: `void console_init(void);` + usable `printf()` over USART2 @115200 (all later tasks print through this)
 
-- [ ] **Step 1: Implement retarget**
+- [x] **Step 1: Implement retarget**
 
 `console.c`:
 ```c
-#include "usart.h"
-#include <unistd.h>
+#include "console.h"
 #include <stdio.h>
+#include <unistd.h>
+#include "stm32f4xx_hal.h"
+
+/* This CubeMX generation has no usart.h (no pair files) — huart2 lives in main.c */
+extern UART_HandleTypeDef huart2;
 
 void console_init(void) {
-  /* USART2 already configured by CubeMX (huart2); nothing extra needed. */
-  setvbuf(stdout, NULL, _IONBF, 0); /* unbuffered: no newlib internal 1KB malloc on first printf, output stays immediate */
+  /* USART2 already configured by CubeMX. Unbuffered stdout: no newlib internal
+   * 1KB malloc on first printf, output stays immediate. */
+  setvbuf(stdout, NULL, _IONBF, 0);
   printf("\r\nInduLogger boot v0.1.0-m1\r\n");
 }
 
@@ -166,7 +171,7 @@ int _write(int fd, char *ptr, int len) {
 ```
 (`console.h`: prototype for `console_init`.)
 
-- [ ] **Step 2: Call from main + verify**
+- [x] **Step 2: Call from main + verify**
 
 In `main.c` USER CODE 2: `console_init();`
 Build + flash: Project → Build Project, then Run As → STM32 C/C++ Application.
