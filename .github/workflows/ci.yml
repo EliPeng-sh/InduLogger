@@ -1,0 +1,32 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  host-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc cmake ninja-build
+      - run: cmake -S host -B host/build -G Ninja
+      - run: cmake --build host/build
+      - run: ctest --test-dir host/build --output-on-failure
+  firmware-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+      - run: make -C stm32 -j2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: stm32/build/InduLogger.elf
+  static-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cppcheck
+      - name: cppcheck (hand-written code only, generated/vendor trees excluded)
+        run: |
+          DIRS=$(ls -d stm32/app stm32/platform stm32/drivers host 2>/dev/null)
+          cppcheck --std=c11 --platform=unix64 --enable=warning,style --error-exitcode=1 \
+            --suppress=missingInclude --suppress=missingIncludeSystem \
+            -i host/third_party -i host/build $DIRS

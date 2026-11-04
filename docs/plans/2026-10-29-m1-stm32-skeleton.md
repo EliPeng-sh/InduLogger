@@ -300,7 +300,7 @@ git commit -m "feat(stats): reset-cause decode (host-TDD), IWDG live, error coun
 - Consumes: `host/CMakeLists.txt` (Task 4), `stm32/Makefile` (Task 1)
 - Produces: green CI badge; artifact `InduLogger.elf` on every push
 
-- [ ] **Step 1: Write workflow**
+- [x] **Step 1: Write workflow**
 
 `.github/workflows/ci.yml`:
 ```yaml
@@ -339,15 +339,17 @@ jobs:
 
 - [ ] **Step 2: Push to GitHub, verify green**
 
-Create empty repo `InduLogger` on GitHub (no README), then:
-`git remote add origin git@github.com:<user>/InduLogger.git && git push -u origin main`
+Create an empty repo `InduLogger` on GitHub (no README/license — the repo has its own), then:
+`git remote add origin git@github.com:<user>/InduLogger.git && git push -u origin main && git push -u origin m1-skeleton`
+(Identity: personal email set repo-locally; all history rewritten via git-filter-repo on 2026-11-04 — company email purged from every commit.)
+Optional domestic mirror: `git remote add gitee git@gitee.com:<user>/InduLogger.git && git push gitee --all` — Gitee does NOT run `.github/workflows` (mirror/backup only; CI + badge stay on GitHub Actions).
 Expected: all three jobs green (host-tests, firmware-build, static-analysis) on the Actions tab.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
-git add .github
-git commit -m "ci: host unit tests + headless CubeIDE firmware build on push"
+git add .github docs
+git commit -m "ci: host tests + firmware build + cppcheck on push"
 ```
 
 ### Task 6: I2C bring-up + BME280 driver (bounded timeouts, error counters)
