@@ -186,7 +186,7 @@
 - **诊断/统计模块**（platform 层，一级公民）：stack watermark、heap、外设错误计数、uptime、reset-cause（RCC 旗标）、DWT 延迟统计
 - **I2C 驱动内建 bus lockup 恢复**（toggle SCL）+ 恢复计数
 - **压测模式**（配置开关）：所有任务满载运行，供最坏情况量测
-- 逻辑分层强制：`app/`（垂直场景）｜`platform/`（配置存储、日志管理、时间同步、健康监控/诊断、通讯管理）｜`middleware/`（Modbus、协议栈、FATFS）｜`drivers/`
+- 逻辑分层强制：`app/`（垂直场景）｜`platform/`（配置存储、日志管理、时间同步、健康监控/诊断、通讯管理）｜`middleware/`（Modbus、协议栈、FATFS）｜`bsp/`（板级驱动。原名 `drivers/`——与 CubeMX 的 `Drivers/` 在大小写不敏感文件系统（NTFS）上是同一个目录，2026-11-04 改名规避）
 - **协议解析器为平台无关纯 C 库**（`middleware/coproc_proto/`），可在 PC 编译跑单元测试
 - 配置不写死：装置 ID、取样率、MQTT topic、压测开关存于 Flash 配置区
 

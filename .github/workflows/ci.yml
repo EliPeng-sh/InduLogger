@@ -26,7 +26,10 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y cppcheck
       - name: cppcheck (hand-written code only, generated/vendor trees excluded)
         run: |
-          DIRS=$(ls -d stm32/app stm32/platform stm32/drivers host 2>/dev/null)
+          DIRS=""
+          for d in stm32/app stm32/bsp stm32/platform host; do
+            [ -d "$d" ] && DIRS="$DIRS $d"
+          done
           cppcheck --std=c11 --platform=unix64 --enable=warning,style --error-exitcode=1 \
             --suppress=missingInclude --suppress=missingIncludeSystem \
             -i host/third_party -i host/build $DIRS

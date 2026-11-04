@@ -330,11 +330,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y cppcheck
-      - name: cppcheck (hand-written code only, generated trees excluded)
+      - name: cppcheck (hand-written code only, generated/vendor trees excluded)
         run: |
-          DIRS=$(ls -d stm32/app stm32/platform stm32/drivers host 2>/dev/null)
+          DIRS=""
+          for d in stm32/app stm32/bsp stm32/platform host; do
+            [ -d "$d" ] && DIRS="$DIRS $d"
+          done
           cppcheck --std=c11 --platform=unix64 --enable=warning,style --error-exitcode=1 \
-            --suppress=missingInclude --suppress=missingIncludeSystem $DIRS
+            --suppress=missingInclude --suppress=missingIncludeSystem \
+            -i host/third_party -i host/build $DIRS
 ```
 
 - [ ] **Step 2: Push to GitHub, verify green**
@@ -355,7 +359,7 @@ git commit -m "ci: host tests + firmware build + cppcheck on push"
 ### Task 6: I2C bring-up + BME280 driver (bounded timeouts, error counters)
 
 **Files:**
-- Create: `stm32/drivers/bme280/bme280.h`, `stm32/drivers/bme280/bme280.c`
+- Create: `stm32/bsp/bme280/bme280.h`, `stm32/bsp/bme280/bme280.c` (layer named `bsp/`: `drivers/` collides with CubeMX's `Drivers/` on case-insensitive NTFS)
 - Create: `stm32/app/industrial_logger/app_sensors.c` (driver smoke harness, expanded in Task 9)
 - Modify: `stm32/InduLogger.ioc` (defaultTask stack 128 → 512 words — see Step 2)
 
@@ -401,14 +405,14 @@ Build + flash. Serial output:
 - [ ] **Step 4: Commit**
 
 ```bash
-git add stm32/drivers/bme280 stm32/app
+git add stm32/bsp/bme280 stm32/app
 git commit -m "feat(bme280): I2C driver with 100ms bound, error counters, smoke verified"
 ```
 
 ### Task 7: MPU6050 driver + sensor plausibility checks (host TDD)
 
 **Files:**
-- Create: `stm32/drivers/mpu6050/mpu6050.h`, `stm32/drivers/mpu6050/mpu6050.c`
+- Create: `stm32/bsp/mpu6050/mpu6050.h`, `stm32/bsp/mpu6050/mpu6050.c`
 - Create: `stm32/platform/stats/sensor_check.h`, `stm32/platform/stats/sensor_check.c`
 - Create: `host/tests/test_sensor_check.c`
 - Modify: `host/CMakeLists.txt` (add sensor_check.c to test target sources), `stm32/app/industrial_logger/app_sensors.c`
@@ -452,14 +456,14 @@ Extend smoke print with MPU line (`ax,ay,az`); board flat on desk → magnitude 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add host stm32/drivers/mpu6050 stm32/platform/stats stm32/app
+git add host stm32/bsp/mpu6050 stm32/platform/stats stm32/app
 git commit -m "feat(mpu6050): driver + host-tested plausibility checks, last-good cache"
 ```
 
 ### Task 8: SD card + FATFS (mount/write/readback, dirty-card tolerant)
 
 **Files:**
-- Create: `stm32/drivers/sdcard/sd_spi.c`, `stm32/drivers/sdcard/sd_spi.h`, `stm32/drivers/sdcard/user_diskio_glue.c`
+- Create: `stm32/bsp/sdcard/sd_spi.c`, `stm32/bsp/sdcard/sd_spi.h`, `stm32/bsp/sdcard/user_diskio_glue.c`
 - Create: `stm32/app/industrial_logger/app_logger.c` (initial), `stm32/platform/config/config.h` (compile-time defaults)
 - Modify: `stm32/app/industrial_logger/app_sensors.c` (remove smoke, real task arrives here/Task 9)
 
@@ -498,7 +502,7 @@ Start an append loop, then **press NRST mid-write** repeatedly (simulating watch
 - [ ] **Step 5: Commit**
 
 ```bash
-git add stm32/drivers/sdcard stm32/app stm32/platform/config
+git add stm32/bsp/sdcard stm32/app stm32/platform/config
 git commit -m "feat(sdcard): SPI-SD + FATFS, pull-card and dirty-card fault-injection verified"
 ```
 

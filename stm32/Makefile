@@ -40,7 +40,9 @@ GEN_SRC := $(wildcard Core/Src/*.c) \
            $(wildcard Middlewares/Third_Party/FatFs/src/option/*.c) \
            $(wildcard Drivers/STM32F4xx_HAL_Driver/Src/*.c)
 # Hand-written code (Task 6+): -Wall -Wextra
-OUR_SRC := $(wildcard app/*/*.c platform/*/*.c drivers/*/*.c)
+# NOTE: the hand-written BSP layer is `bsp/` — a `drivers/` dir would collide with
+# CubeMX's `Drivers/` on case-insensitive filesystems (NTFS).
+OUR_SRC := $(wildcard app/*/*.c platform/*/*.c bsp/*/*.c)
 
 S_SRC   := Core/Startup/startup_stm32f411retx.s
 GEN_OBJ := $(GEN_SRC:%.c=$(BUILD)/%.o)
@@ -61,7 +63,7 @@ $(BUILD)/%.o: %.c
 # hand-written code gets the stricter warning set
 $(BUILD)/app/%.o:     CFLAGS_EXTRA := -Wextra
 $(BUILD)/platform/%.o: CFLAGS_EXTRA := -Wextra
-$(BUILD)/drivers/%.o:  CFLAGS_EXTRA := -Wextra
+$(BUILD)/bsp/%.o:      CFLAGS_EXTRA := -Wextra
 
 $(BUILD)/%.o: %.s
 	@mkdir -p $(dir $@)
