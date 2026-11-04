@@ -110,18 +110,18 @@ git commit -m "feat(stm32): CubeMX scaffold + Makefile build - 100MHz F411, Free
 - Consumes: `stm32/build/InduLogger.elf` (Task 1)
 - Produces: documented flash path used by later tasks (IDE Run/Debug; OpenOCD as backup)
 
-- [ ] **Step 1: Connect the Nucleo (plug-and-play)**
+- [x] **Step 1: Connect the Nucleo (plug-and-play)**
 
 USB to the Windows PC — no usbipd needed for the main path. Device Manager → Ports: expect `STMicroelectronics STLink Virtual COM Port (COMx)`.
 
-- [ ] **Step 2: Flash via `make flash`**
+- [x] **Step 2: Flash via `make flash`**
 
 Plug the Nucleo into the Windows PC (no usbipd needed). From `stm32/`: `make flash`
 (STM32CubeProgrammer CLI via WSL interop: connect ST-LINK SWD, write + verify + run. First connect: accept the ST-LINK firmware-upgrade prompt if the CLI suggests it.)
 Expected: flash + run; **LD2 blinks at 1 Hz on the board** (physical observation).
 Debug alternative: CubeIDE Debug As → STM32 C/C++ Application with auto-build disabled (Build Before Launch = disabled) against the existing `stm32/build/InduLogger.elf` — the managed build is retired.
 
-- [ ] **Step 3: Write `docs/notes/flash.md`**
+- [x] **Step 3: Write `docs/notes/flash.md`**
 
 Document all paths:
 - Main: `make flash` (STM32CubeProgrammer CLI v2.22.0 — SWD connect, write + verify + run; ST-LINK on Windows USB, called from WSL via interop).
