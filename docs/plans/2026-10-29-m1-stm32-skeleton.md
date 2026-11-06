@@ -415,6 +415,11 @@ git commit -m "feat(bme280): I2C driver with 100ms bound, error counters, smoke 
 
 ### Task 7: MPU6050 driver + sensor plausibility checks (host TDD)
 
+**Status (2026-11-06): host TDD green (`sensor_plausible_bme`/`_mpu`, 2 suites pass), MPU6050
+driver implemented. On-target no-sensor evidence: `MPU6050 init failed` +1 retry/2 s, zero
+resets, stack watermark wm=372 words free (>= 40). Flat/tilt/disconnect cases pending
+MPU6050 hardware.**
+
 **Files:**
 - Create: `stm32/bsp/mpu6050/mpu6050.h`, `stm32/bsp/mpu6050/mpu6050.c`
 - Create: `stm32/platform/stats/sensor_check.h`, `stm32/platform/stats/sensor_check.c`
@@ -431,7 +436,7 @@ bool sensor_plausible_bme(float t, float h, float p);  // -40..85C, 0..100%, 300
 bool sensor_plausible_mpu(float ax, float ay, float az);         // 0.3..2.0 g magnitude
 ```
 
-- [ ] **Step 1: Write failing host test**
+- [x] **Step 1: Write failing host test**
 
 `host/tests/test_sensor_check.c`:
 ```c
@@ -445,11 +450,11 @@ void test_mpu_rest(void)     { TEST_ASSERT_TRUE(sensor_plausible_mpu(0.10f, -0.0
 void test_mpu_flat(void)     { TEST_ASSERT_FALSE(sensor_plausible_mpu(5.0f, 0.0f, 0.0f)); }
 ```
 
-- [ ] **Step 2: Run, verify fail** (same ctest command as Task 4). Expected: FAIL (sensor_check.c missing).
+- [x] **Step 2: Run, verify fail** (same ctest command as Task 4). Expected: FAIL (sensor_check.c missing).
 
-- [ ] **Step 3: Implement `sensor_check.c` + wire into test build** — straightforward range/magnitude checks; add `sensor_check.c` to `host/CMakeLists.txt` sources list. Re-run ctest: 6/6 PASS (reset-cause + sensor-check tests).
+- [x] **Step 3: Implement `sensor_check.c` + wire into test build** — straightforward range/magnitude checks; add `sensor_check.c` to `host/CMakeLists.txt` sources list. Re-run ctest: 6/6 PASS (reset-cause + sensor-check tests).
 
-- [ ] **Step 4: Implement MPU6050 driver**
+- [x] **Step 4: Implement MPU6050 driver**
 
 init: `WHO_AM_I` (0x75) == 0x68 — cheap GY-521 clones sometimes return a different ID; on mismatch fail init + count the error and print the observed ID once (whitelist a clone's value only with a code comment after confirming the board is a clone); wake `PWR_MGMT_1=0x00`; `ACCEL_CONFIG=0x08` (±4g), `GYRO_CONFIG=0x08` (±500 dps); read: burst 14B from 0x3B, scale accel `raw/8192.0f`. Timeouts 100 ms → `stats_error(ERR_MPU_TIMEOUT)`. Any out-of-range reading → `stats_error(ERR_SENSOR_RANGE)`, return last-good.
 
@@ -457,7 +462,7 @@ init: `WHO_AM_I` (0x75) == 0x68 — cheap GY-521 clones sometimes return a diffe
 
 Extend smoke print with MPU line (`ax,ay,az`); board flat on desk → magnitude ≈ 1.0 g ±0.1. Tilt board 90° → az→0, ax→±1. Disconnect sensor → error counter increments, task survives.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add host stm32/bsp/mpu6050 stm32/platform/stats stm32/app

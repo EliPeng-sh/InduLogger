@@ -6,7 +6,7 @@ set(UNITY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/unity)
 file(GLOB TESTS tests/test_*.c)
 foreach(T ${TESTS})
   get_filename_component(N ${T} NAME_WE)
-  add_executable(${N} ${T} ../stm32/platform/stats/stats.c ${UNITY_DIR}/unity.c)
+  add_executable(${N} ${T} ../stm32/platform/stats/stats.c ../stm32/platform/stats/sensor_check.c ${UNITY_DIR}/unity.c)
   target_include_directories(${N} PRIVATE ../stm32/platform/stats ${UNITY_DIR})
   target_compile_definitions(${N} PRIVATE HOST_TEST) # required by the #ifndef HOST_TEST guards in stats.c
   target_compile_options(${N} PRIVATE -Wall -Wextra)
