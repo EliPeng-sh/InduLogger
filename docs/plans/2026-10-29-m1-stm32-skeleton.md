@@ -588,6 +588,11 @@ git commit -m "feat(app): csv format (host-TDD), sensor->queue->logger pipeline,
 
 ### Task 10: DWT + GPIO instrumentation (evidence infra per spec §3)
 
+**Status (2026-11-06): implemented (`platform/diag/`), DWT measurement live on target:
+failed I2C attempts take 51 557 us each (stable across 11 samples, within the 100 ms
+bound; no pull-ups on the naked bus). BENCH_GPIO1 (PA1/A1) frames every attempt —
+scope cross-check (±10 %) pending an instrument.**
+
 **Files:**
 - Create: `stm32/platform/diag/diag.h`, `stm32/platform/diag/diag.c`
 - Modify: `app_sensors.c` (measure I2C read duration), `Core/Src/stm32f4xx_it.c` USER CODE (SysTick? no — measure in task context)
@@ -601,7 +606,7 @@ static inline uint32_t diag_cycles(void);    // DWT->CYCCNT
 void diag_bench_gpio_set(int n, bool on);    // BENCH_GPIO1/2
 ```
 
-- [ ] **Step 1: Implement + sample usage**
+- [x] **Step 1: Implement + sample usage**
 
 Measure `bme280_read` duration: `uint32_t t0=diag_cycles(); ...; uint32_t us=(diag_cycles()-t0)/100;` (100 MHz → 100 cycles/µs) printed by Monitor: `i2c read: 312 us (p50/p99 histogram deferred to M4)`.
 
@@ -609,7 +614,7 @@ Measure `bme280_read` duration: `uint32_t t0=diag_cycles(); ...; uint32_t us=(di
 
 CH1 on `BENCH_GPIO1` around an I2C transaction: visible pulse framing each read; cycle-count printed value within ±10% of scope-measured pulse width.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add stm32/platform/diag stm32/app

@@ -1,6 +1,7 @@
 #include "app/industrial_logger/app_sensors.h"
 #include "bsp/bme280/bme280.h"
 #include "bsp/mpu6050/mpu6050.h"
+#include "platform/diag/diag.h"
 #include "platform/stats/stats.h"
 
 #include <stdio.h>
@@ -18,18 +19,31 @@ void app_sensors_tick(void)
   float t, h, p, ax, ay, az;
 
   if (!s_bme_inited) {
-    if (bme280_init(&hi2c1) == 0) {
+    diag_bench_gpio_set(1, true); /* BENCH_GPIO1 high for the whole I2C attempt (scope) */
+    uint32_t t0 = diag_cycles();
+    int rc = bme280_init(&hi2c1);
+    uint32_t us = (diag_cycles() - t0) / 100u;
+    diag_bench_gpio_set(1, false);
+    if (rc == 0) {
       s_bme_inited = 1;
-      printf("BME280 init ok\r\n");
+      printf("BME280 init ok (%u us)\r\n", (unsigned)us);
     } else {
-      printf("BME280 init failed (err cnt=%u)\r\n",
-             (unsigned)stats_get(ERR_BME_TIMEOUT));
+      printf("BME280 init failed (err cnt=%u, %u us)\r\n",
+             (unsigned)stats_get(ERR_BME_TIMEOUT), (unsigned)us);
     }
-  } else if (bme280_read(&t, &h, &p) == 0) {
-    printf("BME280 t=%.2fC rh=%.2f%% p=%.1fhPa\r\n", t, h, p);
   } else {
-    printf("BME280 read failed (err cnt=%u)\r\n",
-           (unsigned)stats_get(ERR_BME_TIMEOUT));
+    diag_bench_gpio_set(1, true);
+    uint32_t t0 = diag_cycles();
+    int rc = bme280_read(&t, &h, &p);
+    uint32_t us = (diag_cycles() - t0) / 100u;
+    diag_bench_gpio_set(1, false);
+    if (rc == 0) {
+      printf("BME280 t=%.2fC rh=%.2f%% p=%.1fhPa (i2c read: %u us)\r\n",
+             t, h, p, (unsigned)us);
+    } else {
+      printf("BME280 read failed (err cnt=%u, %u us)\r\n",
+             (unsigned)stats_get(ERR_BME_TIMEOUT), (unsigned)us);
+    }
   }
 
   if (!s_mpu_inited) {

@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include "app/industrial_logger/app_sensors.h"
 #include "platform/console/console.h"
+#include "platform/diag/diag.h"
 #include "platform/stats/stats.h"
 /* USER CODE END Includes */
 
@@ -118,6 +119,7 @@ int main(void)
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
   DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP; /* pause IWDG under debugger */
+  diag_dwt_init(); /* DWT cycle counter + bench GPIOs (T10) */
   console_init(); /* banner + printf retarget over ST-LINK VCP */
   printf("reset cause: %s\r\n", reset_cause_name(reset_cause_capture()));
   /* USER CODE END 2 */
