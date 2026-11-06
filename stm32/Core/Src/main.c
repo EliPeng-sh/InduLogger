@@ -24,6 +24,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include "app/industrial_logger/app_sensors.h"
 #include "platform/console/console.h"
 #include "platform/stats/stats.h"
 /* USER CODE END Includes */
@@ -139,7 +140,7 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 512);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -444,9 +445,13 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
+  static uint32_t n = 0;
   for (;;) {
     HAL_GPIO_TogglePin(LED_HEARTBEAT_GPIO_Port, LED_HEARTBEAT_Pin);
     iwdg_feed(); /* single-task skeleton feeding; Task 9 moves feeding to the Monitor alive-mask */
+    if (++n % 4u == 0u) {
+      app_sensors_tick(); /* T6 smoke: every 2 s */
+    }
     vTaskDelay(pdMS_TO_TICKS(500));
   }
   /* USER CODE END 5 */
