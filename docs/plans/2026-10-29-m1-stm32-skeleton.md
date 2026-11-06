@@ -358,6 +358,10 @@ git commit -m "ci: host tests + firmware build + cppcheck on push"
 
 ### Task 6: I2C bring-up + BME280 driver (bounded timeouts, error counters)
 
+**Status (2026-11-06): driver + smoke complete, committed `8f17104`. No-sensor error path
+evidenced on target (err cnt +2 per 2 s retry: 0x76+0x77 probe reads, zero resets, IWDG
+fed). Connected-sensor readings + stack watermark (≥40 words) pending BME280 hardware.**
+
 **Files:**
 - Create: `stm32/bsp/bme280/bme280.h`, `stm32/bsp/bme280/bme280.c` (layer named `bsp/`: `drivers/` collides with CubeMX's `Drivers/` on case-insensitive NTFS)
 - Create: `stm32/app/industrial_logger/app_sensors.c` (driver smoke harness, expanded in Task 9)
@@ -372,7 +376,7 @@ int bme280_init(I2C_HandleTypeDef *hi2c);
 int bme280_read(float *temp_c, float *hum_pct, float *press_hpa); // blocking ≤100ms
 ```
 
-- [ ] **Step 1: Implement driver (I2C bounded + compensation)**
+- [x] **Step 1: Implement driver (I2C bounded + compensation)**
 
 Key content of `bme280.c` (compact float compensation, normal mode):
 - init: verify chip id reg `0xD0 == 0x60`; soft reset `0xE0=0xB6`; read trims `0x88..0xA1` (25 B = T1–T3, P1–P9, H1) + `0xE1..0xE7` (7 B = H2–H6); config `0xF5=0x9C` (t_sb 500 ms — matches the 500 ms sampling period — + IIR ×16); `0xF2=0x01` (hum ×1); `0xF4=0x57` (T ×2, P ×16, normal mode).
@@ -402,7 +406,7 @@ Build + flash. Serial output:
 1. Sensor connected: `t≈room temp ±2°C`, `rh` sane, `p≈1013±30 hPa`.
 2. **Disconnect SDA wire** → within ~2 s: `BME280 read failed (err cnt=N)` repeating; board keeps running (LED blinks) — Review Focus #1 evidence.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add stm32/bsp/bme280 stm32/app

@@ -32,8 +32,13 @@
 | T3 | console：printf 重定向到 ST-LINK VCP，横幅取证 | ✓ `0474742` |
 | T4 | stats：复位原因解码（主机 TDD 3/3）+ IWDG + 错误计数器 | ✓ `7b87824` |
 | T5 | CI：host tests + 固件构建 + cppcheck，push 全绿 | ✓ `30649d0`+`e8eba0b` |
-| **T6** | **I2C + BME280 驱动 ← 下一个** | 传感器待接线确认 |
+| **T6** | I2C + BME280 驱动：无传感器错误路径已上板取证（+2/2s、零复位）；连通读数待硬件 | ✓ `8f17104`（部分） |
+| **T7** | **MPU6050 驱动 + 传感器合理性检查（主机 TDD）← 下一个（主机可测部分）** | 未开始 |
 | T7-T11 | MPU6050 / SD+FATFS / 三任务集成 / DWT+GPIO / 里程碑收官 | 未开始 |
+
+- T6 剩余：BME280 到货后补"连通读数 + 栈高水位 ≥40 词"两项验证（代码已就位，插上即验）
+- WSL `/tmp` 目前 100% 满（opencode 的 `oc_readonly.db` 占 4 GB，用户自行处理）→ 编译
+  命令加 `TMPDIR=/home/eli_peng/tmp` 前缀即可绕过
 
 分支 `m1-skeleton`，里程碑完成时合入 main 并打 tag（T11）。
 
@@ -111,6 +116,13 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
    退出码，不是 cmd 的——要单独跑或落盘再查
 6. api.github.com 未认证查询只有公开仓库可见（私有仓一律 404，会误导排查方向）
 7. 本网络到 GitHub 的 SSH/API 偶发抖动，重试解决（见 §7）
+8. `FreeRTOSConfig.h` 模板里没有 `INCLUDE_uxTaskGetStackHighWaterMark`（默认未定义 →
+   链接报 undefined reference）；解决办法是加到该文件的 **USER CODE Defines 区**
+   （regen 安全），不要在生成区硬改
+9. bash 里 `cd repo && cmd &` 会把整个复合命令后台化——后续命令仍在**原** cwd；后台
+   起命令后配绝对路径（`make -C /mnt/d/InduLogger/stm32 flash`）
+10. `.ioc` 的 `FREERTOS.Tasks01`（第三字段=栈词数）可以直接编辑，与生成代码的
+    `osThreadDef(..., stacksz)` 同步改；下次 CubeIDE GUI 重新生成时一致
 
 ## 9. 会话工作法（沿用既有节奏）
 
