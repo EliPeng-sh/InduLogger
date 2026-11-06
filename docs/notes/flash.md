@@ -16,6 +16,21 @@ Build first: `make -C stm32` → `stm32/build/InduLogger.elf`
   fires mid-flash; CubeProgrammer re-attaches, verify still passes. Harmless — and a nice
   demonstration that the watchdog is live.
 
+## Serial capture for evidence (`scripts/serial_capture.sh`)
+
+- `scripts/serial_capture.sh [seconds]` (default 30) listens on the ST-LINK VCP
+  from WSL via interop (port auto-detected through `Get-PnpDevice`, 115200 8N1)
+  and writes `C:\temp\serial_cap.txt` = `/mnt/c/temp/serial_cap.txt`
+- **The file appears only after the capture window ends.** Start the listener in
+  the background, flash during the window, then read the file:
+
+  ```bash
+  scripts/serial_capture.sh 30 &
+  make -C stm32 flash
+  sleep 5   # let the window finish, then read
+  cat /mnt/c/temp/serial_cap.txt
+  ```
+
 ## Debug: CubeIDE graphical debug
 
 - Debug As → STM32 C/C++ Application, with the debug configuration set to
