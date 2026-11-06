@@ -122,7 +122,6 @@ int bme280_read(float *temp_c, float *hum_pct, float *press_hpa)
   {
     int64_t v1 = ((int64_t)t_fine) - 128000;
     int64_t v2 = v1 * v1 * (int64_t)dig_P6;
-    int64_t p;
     v2 = v2 + ((v1 * (int64_t)dig_P5) << 17);
     v2 = v2 + ((int64_t)dig_P4 << 35);
     v1 = ((v1 * v1 * (int64_t)dig_P3) >> 8) + ((v1 * (int64_t)dig_P2) << 12);
@@ -130,7 +129,7 @@ int bme280_read(float *temp_c, float *hum_pct, float *press_hpa)
     if (v1 == 0) {
       *press_hpa = 0.0f;   /* P1 == 0: fail-safe, no division */
     } else {
-      p = 1048576 - adc_P;
+      int64_t p = 1048576 - adc_P;
       p = (((p << 31) - v2) * 3125) / v1;
       v1 = ((int64_t)dig_P9 * (p >> 13) * (p >> 13)) >> 25;
       v2 = ((int64_t)dig_P8 * p) >> 19;

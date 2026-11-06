@@ -53,6 +53,10 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 
 - 串口取证流程：**先**起 `serial_capture.sh`（后台）→ `make flash` → **等窗口结束**再读
   `/mnt/c/temp/serial_cap.txt`（文件在监听窗口结束时才落盘；跑之前脚本会自动删旧文件）
+- **WSL `/tmp` 满时**：构建加 `TMPDIR=/home/eli_peng/tmp` 前缀（apt 也会被 /tmp 卡死）
+- **本地 cppcheck 2.13（=CI 同版本，在 /home 下常驻）**：
+  `LD_LIBRARY_PATH=/home/eli_peng/cpx/root/usr/lib/x86_64-linux-gnu
+  /home/eli_peng/cpx/root/usr/bin/cppcheck …`（参数同 ci.yml；FILESDIR 已补丁）
 - CubeIDE 只用于 `.ioc` 图形化代码生成和图形调试；**自动构建保持关闭**
   （managed build 会生成含 UNC 绝对路径的 makefile——这就是项目搬到 D 盘的原因）
 - arm-none-eabi-gcc 14.2.1（apt）；CMake 4.4 + Ninja；Unity v2.6.0 **vendored** 在
