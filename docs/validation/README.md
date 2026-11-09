@@ -14,7 +14,7 @@ was produced. Nothing here is simulated — pending items are marked as pending.
 | 4 | Sensor plausibility logic | ✅ | Host TDD via CTest: 2 suites green (`test_reset_cause`, `test_sensor_check`); CI runs the same tests |
 | 5 | MPU6050 driver with last-good cache on out-of-range | ✅ (code) | Not yet exercised on a real chip — pending hardware |
 | 6 | DWT cycle counter + bench-GPIO instrumentation | ✅ (part) | I2C attempt latency measured by DWT (51.6 ms, stable); `BENCH_GPIO1` (PA1) frames every attempt for a scope; ±10 % cross-check pending an instrument |
-| 7 | CI green on every push (host tests + firmware build + static analysis) | ✅ (through `6aaa543`) | GitHub Actions: 3 jobs green. A later run (`14620c6`) was delayed by a runner-side apt stall — infrastructure, not code (the same Makefile builds locally with zero warnings) |
+| 7 | CI green on every push (host tests + firmware build + static analysis) | ✅ (through `14620c6`) | GitHub Actions: 3 jobs green. Runner-side apt stalls occasionally delay a run by minutes — infrastructure, not code (the same Makefile builds locally with zero warnings) |
 
 ### Pending (hardware on order)
 
