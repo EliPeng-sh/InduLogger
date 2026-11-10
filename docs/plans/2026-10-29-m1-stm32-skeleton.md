@@ -358,9 +358,14 @@ git commit -m "ci: host tests + firmware build + cppcheck on push"
 
 ### Task 6: I2C bring-up + BME280 driver (bounded timeouts, error counters)
 
-**Status (2026-11-06): driver + smoke complete, committed `8f17104`. No-sensor error path
-evidenced on target (err cnt +2 per 2 s retry: 0x76+0x77 probe reads, zero resets, IWDG
-fed). Connected-sensor readings + stack watermark (≥40 words) pending BME280 hardware.**
+**Status (2026-11-10): COMPLETE on target, see Task 6 evidence commit. Connected readings
+verified (t≈27.4 °C, rh≈42 %, p≈1002 hPa, i2c read 275 µs, wm=317 ≥ 40). Pressure compensation
+bug caught by host-TDD oracle (Bosch BME280_driver v3.5.1 line-diff): firmware missed the /256
+Q24.8→Pa conversion + P7 term → p ×2.56; fix isolated in `bsp/bme280/bme280_compensate.{h,c}`
+(HAL-free seam, host-tested), board-verified. Fault injection: SDA pull → bounded failure
+(err +1 per 2 s, 100.6 ms bound, zero resets, board alive — Review Focus #1). Replug did NOT
+recover: slave FSM wedge holds SDA low (0.02 V measured) until power cycle → follow-up queued:
+consecutive-failure bus-clear (9 SCL pulses + STOP per AN4235) + re-init, host-TDD.**
 
 **Files:**
 - Create: `stm32/bsp/bme280/bme280.h`, `stm32/bsp/bme280/bme280.c` (layer named `bsp/`: `drivers/` collides with CubeMX's `Drivers/` on case-insensitive NTFS)
@@ -384,7 +389,7 @@ Key content of `bme280.c` (compact float compensation, normal mode):
 - Any `HAL_TIMEOUT`/`HAL_ERROR` → `stats_error(ERR_BME_TIMEOUT)`, return -1.
 All I2C calls use 100 ms timeout — never infinite.
 
-- [ ] **Step 2: Smoke harness prints reading**
+- [x] **Step 2: Smoke harness prints reading**
 
 `app_sensors.c` (called from default task every 2 s, temporary until Task 9):
 ```c
@@ -400,7 +405,7 @@ The smoke `printf` runs in the default task, whose CubeMX stack default (128 wor
 printf("wm=%u\r\n", (unsigned)uxTaskGetStackHighWaterMark(NULL));
 ```
 
-- [ ] **Step 3: On-target verification (two physical cases)**
+- [x] **Step 3: On-target verification (two physical cases)**
 
 Build + flash. Serial output:
 1. Sensor connected: `t≈room temp ±2°C`, `rh` sane, `p≈1013±30 hPa`.
