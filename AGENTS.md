@@ -32,15 +32,15 @@
 | T3 | console：printf 重定向到 ST-LINK VCP，横幅取证 | ✓ `0474742` |
 | T4 | stats：复位原因解码（主机 TDD 3/3）+ IWDG + 错误计数器 | ✓ `7b87824` |
 | T5 | CI：host tests + 固件构建 + cppcheck，push 全绿 | ✓ `30649d0`+`e8eba0b` |
-| T6 | I2C + BME280 驱动：连通读数（p=1002 hPa）+ 拔线容错已上板取证；压力补偿 ×2.56 bug 被 Bosch oracle 主机 TDD 抓住并修复（`bme280_compensate` 隔离层）；拔线复插不自恢复=从机 FSM 卡死（踩坑 11，bus-clear 待补） | ✓ `8f17104`+`35cacfe` |
+| T6 | I2C + BME280 驱动：连通读数（p=1002 hPa）+ 拔线容错已上板取证；压力补偿 ×2.56 bug 被 Bosch oracle 主机 TDD 抓住并修复（`bme280_compensate` 隔离层）；拔线复插不自恢复=从机 FSM 卡死（踩坑 11）→ bus-clear 已补并复注验证自恢复 | ✓ `8f17104`+`35cacfe`+`efc20c6` |
 | **T7** | MPU6050 驱动 + 合理性检查：主机 TDD 全绿（2 套件），无传感器错误路径已取证（+1/2s、wm=372）；平坦/倾斜验证待硬件 | ✓（部分） |
 | T8 | SD + FATFS（需 SD 模块与卡） | 未开始 |
 | **T10** | DWT + GPIO 打点基建：已实测 I2C 失败尝试 51.6 ms/次（稳定、<100ms 限界）；示波器交叉验证待仪器 | ✓（部分） |
 | T9、T11 | 三任务集成（需传感器+SD）/ 里程碑收官 | 未开始 |
 
-- 下一步顺序：① bus-clear/重 init 机制（连续 N 次失败→GPIO 9×SCL+STOP 按 AN4235→清
-  inited 标志→tick 重 init；主机 TDD 决策逻辑）→ 故障复注验证自恢复 ② MPU6500 id 兼容
-  （GY-521 实测 WHO_AM_I=0x70 非 0x68，寄存器基本兼容）③ T8 SD+FATFS（模块+卡已到货）
+- 下一步顺序：① MPU6500 id 兼容（GY-521 实测 WHO_AM_I=0x70 非 0x68，寄存器基本
+  兼容）② T8 SD+FATFS（模块+卡已到货；先确认模块供电类型）
+  ③ T9 三任务集成 → T11 收官
 - WSL `/tmp` 目前 100% 满（opencode 的 `oc_readonly.db` 占 4 GB，用户自行处理）→ 编译
   命令加 `TMPDIR=/home/eli_peng/tmp` 前缀即可绕过
 
@@ -132,8 +132,9 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 10. `.ioc` 的 `FREERTOS.Tasks01`（第三字段=栈词数）可以直接编辑，与生成代码的
     `osThreadDef(..., stacksz)` 同步改；下次 CubeIDE GUI 重新生成时一致
 11. **I2C 从机 FSM 卡死**：传输中段拔线 → 芯片拉死 SDA（实测 0.02 V），HAL 无总线
-    清障能力，插回线**不会**自恢复，只能断电重启芯片；固件缺口 → 待补"连续失败→
-    GPIO 9×SCL+STOP→重 init"（见 §3 下一步）
+    清障能力，插回线**不会**自恢复，只能断电重启芯片。**已修复**：连续 3 次读失败 →
+    GPIO 模式 9×SCL+STOP（AN4235）→ 清 inited → tick 重 init（`efc20c6`）；
+    复注拔线故障：插回 ≤4 s 自恢复、全程零复位、LED 不断
 12. **补偿公式必须以官方 driver 为 oracle 逐行 diff**（Bosch BME280_driver v3.5.1）：
     自写 float 版漏掉 Q24.8 /256 + P7 项 → 压力 ×2.56；HAL-free 补偿模块
     （`bme280_compensate.{h,c}`）是主机 TDD 能抓住这类 bug 的前提
@@ -150,12 +151,9 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 
 ## 10. 下一步清单（T6 完成后）
 
-1. **bus-clear/重 init**（主机 TDD）：连续 N 次 bme280_read 失败 → GPIO 模式 9×SCL
-   脉冲 + STOP（AN4235）→ 清 `s_bme_inited` → tick 走重 init；完成后拔线复注验证
-   自恢复（当前板上证据：卡死只能断电清）
-2. **MPU6500 id 兼容**（主机 TDD）：GY-521 实测 WHO_AM_I=0x70（非 6050 的 0x68），
+1. **MPU6500 id 兼容**（主机 TDD）：GY-521 实测 WHO_AM_I=0x70（非 6050 的 0x68），
    寄存器基本兼容 → 驱动接受 {0x68, 0x70} → MPU 插回 wires → T7 平坦/倾斜上板取证
-3. **T8 SD+FATFS**：`stm32/bsp/sdcard/{sd_spi.c,sd_spi.h,user_diskio_glue.c}` +
+2. **T8 SD+FATFS**：`stm32/bsp/sdcard/{sd_spi.c,sd_spi.h,user_diskio_glue.c}` +
    `app_logger.c`；SPI1 PB3/PB4/PB5 + PA4 CS（丝印 D5/D4/D3/A2）；**先确认 SD 模块
    是 5V+稳压型还是 3.3V 直供型**再接线；init 400kHz→12.5MHz，全部 100ms 限界
-4. T9 三任务集成（CSV formatter 可先于 SD 硬件做主机 TDD）→ T11 收官
+3. T9 三任务集成（CSV formatter 可先于 SD 硬件做主机 TDD）→ T11 收官
