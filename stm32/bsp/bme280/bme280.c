@@ -110,3 +110,53 @@ int bme280_read(float *temp_c, float *hum_pct, float *press_hpa)
 
   return 0;
 }
+
+/* >4 us at 100 MHz; exact duration not timing-critical here (far above the
+ * I2C standard-mode minimum pulse width). */
+static void bus_delay(void)
+{
+  for (volatile uint32_t d = 0; d < 5000u; d++) {
+  }
+}
+
+void bme280_bus_recover(void)
+{
+  GPIO_InitTypeDef io = {0};
+  const uint32_t scl = GPIO_PIN_8;  /* PB8 = I2C1 SCL, fixed by MSP */
+  const uint32_t sda = GPIO_PIN_9;  /* PB9 = I2C1 SDA, fixed by MSP */
+  int i;
+
+  io.Pin = scl | sda;
+  io.Mode = GPIO_MODE_OUTPUT_OD;
+  io.Pull = GPIO_NOPULL;
+  io.Speed = GPIO_SPEED_FREQ_LOW;
+  io.Alternate = 0;
+  HAL_GPIO_Init(GPIOB, &io);
+  HAL_GPIO_WritePin(GPIOB, scl | sda, GPIO_PIN_SET); /* release both lines */
+
+  /* Up to 9 SCL pulses: a stuck slave can be waiting for at most one byte + ACK.
+   * Stop early once the slave releases SDA. */
+  for (i = 0; i < 9; i++) {
+    bus_delay();
+    HAL_GPIO_WritePin(GPIOB, scl, GPIO_PIN_RESET);
+    bus_delay();
+    HAL_GPIO_WritePin(GPIOB, scl, GPIO_PIN_SET);
+    if (HAL_GPIO_ReadPin(GPIOB, sda) == GPIO_PIN_SET) {
+      break;
+    }
+  }
+
+  /* STOP condition: SDA falling edge while SCL high. */
+  bus_delay();
+  HAL_GPIO_WritePin(GPIOB, sda, GPIO_PIN_RESET);
+  bus_delay();
+  HAL_GPIO_WritePin(GPIOB, sda, GPIO_PIN_SET);
+  bus_delay();
+
+  /* Restore AF open-drain exactly as stm32f4xx_hal_msp.c configures it. */
+  io.Mode = GPIO_MODE_AF_OD;
+  io.Pull = GPIO_NOPULL;
+  io.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  io.Alternate = GPIO_AF4_I2C1;
+  HAL_GPIO_Init(GPIOB, &io);
+}
