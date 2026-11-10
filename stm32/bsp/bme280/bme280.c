@@ -1,4 +1,5 @@
 #include "bsp/bme280/bme280.h"
+#include "bsp/bme280/bme280_compensate.h"
 #include "platform/stats/stats.h"
 
 #include <stdint.h>
@@ -17,11 +18,7 @@
 static I2C_HandleTypeDef *s_i2c;
 static uint8_t s_addr8;   /* 8-bit (shifted) device address */
 
-static uint16_t dig_T1, dig_P1;
-static int16_t  dig_T2, dig_T3, dig_P2, dig_P3, dig_P4, dig_P5, dig_P6, dig_P7, dig_P8, dig_P9;
-static uint8_t  dig_H1, dig_H3;
-static int16_t  dig_H2, dig_H4, dig_H5;
-static int8_t   dig_H6;
+static bme280_trim_t s_trim;
 
 static int read_reg(uint8_t reg, uint8_t *buf, uint16_t len)
 {
@@ -64,26 +61,26 @@ int bme280_init(I2C_HandleTypeDef *hi2c)
   HAL_Delay(10);   /* datasheet: max 2 ms after soft reset */
 
   if (read_reg(BME_REG_CALIB, calib, (uint16_t)sizeof calib) != 0) return -1;
-  dig_T1 = (uint16_t)(calib[0] | (calib[1] << 8));
-  dig_T2 = (int16_t)(calib[2] | (calib[3] << 8));
-  dig_T3 = (int16_t)(calib[4] | (calib[5] << 8));
-  dig_P1 = (uint16_t)(calib[6] | (calib[7] << 8));
-  dig_P2 = (int16_t)(calib[8]  | (calib[9]  << 8));
-  dig_P3 = (int16_t)(calib[10] | (calib[11] << 8));
-  dig_P4 = (int16_t)(calib[12] | (calib[13] << 8));
-  dig_P5 = (int16_t)(calib[14] | (calib[15] << 8));
-  dig_P6 = (int16_t)(calib[16] | (calib[17] << 8));
-  dig_P7 = (int16_t)(calib[18] | (calib[19] << 8));
-  dig_P8 = (int16_t)(calib[20] | (calib[21] << 8));
-  dig_P9 = (int16_t)(calib[22] | (calib[23] << 8));
-  dig_H1 = calib[25];
+  s_trim.T1 = (uint16_t)(calib[0] | (calib[1] << 8));
+  s_trim.T2 = (int16_t)(calib[2] | (calib[3] << 8));
+  s_trim.T3 = (int16_t)(calib[4] | (calib[5] << 8));
+  s_trim.P1 = (uint16_t)(calib[6] | (calib[7] << 8));
+  s_trim.P2 = (int16_t)(calib[8]  | (calib[9]  << 8));
+  s_trim.P3 = (int16_t)(calib[10] | (calib[11] << 8));
+  s_trim.P4 = (int16_t)(calib[12] | (calib[13] << 8));
+  s_trim.P5 = (int16_t)(calib[14] | (calib[15] << 8));
+  s_trim.P6 = (int16_t)(calib[16] | (calib[17] << 8));
+  s_trim.P7 = (int16_t)(calib[18] | (calib[19] << 8));
+  s_trim.P8 = (int16_t)(calib[20] | (calib[21] << 8));
+  s_trim.P9 = (int16_t)(calib[22] | (calib[23] << 8));
+  s_trim.H1 = calib[25];
 
   if (read_reg(BME_REG_CALIB_H, calib_h, (uint16_t)sizeof calib_h) != 0) return -1;
-  dig_H2 = (int16_t)(calib_h[0] | (calib_h[1] << 8));
-  dig_H3 = calib_h[2];
-  dig_H4 = (int16_t)(((int8_t)calib_h[3] << 4) | (calib_h[4] & 0x0Fu));
-  dig_H5 = (int16_t)(((int8_t)calib_h[5] << 4) | (calib_h[4] >> 4));
-  dig_H6 = (int8_t)calib_h[6];
+  s_trim.H2 = (int16_t)(calib_h[0] | (calib_h[1] << 8));
+  s_trim.H3 = calib_h[2];
+  s_trim.H4 = (int16_t)(((int8_t)calib_h[3] << 4) | (calib_h[4] & 0x0Fu));
+  s_trim.H5 = (int16_t)(((int8_t)calib_h[5] << 4) | (calib_h[4] >> 4));
+  s_trim.H6 = (int8_t)calib_h[6];
 
   /* t_sb = 500 ms (matches sampling), IIR x16; hum x1 (must precede ctrl_meas);
    * T x2, P x16, normal mode */
@@ -99,7 +96,6 @@ int bme280_read(float *temp_c, float *hum_pct, float *press_hpa)
   uint8_t raw[8];
   int32_t adc_T, adc_P, adc_H;
   int32_t t_fine;
-  float var_h, hum;
 
   if (s_i2c == NULL) return -1;
   if (read_reg(BME_REG_DATA, raw, (uint16_t)sizeof raw) != 0) return -1;
@@ -108,45 +104,9 @@ int bme280_read(float *temp_c, float *hum_pct, float *press_hpa)
   adc_T = ((int32_t)raw[3] << 12) | ((int32_t)raw[4] << 4) | (raw[5] >> 4);
   adc_H = ((int32_t)raw[6] << 8) | raw[7];
 
-  /* Temperature, integer (datasheet 4.2.3); t_fine scale ~45.6 x century-C */
-  {
-    int64_t d1 = (int64_t)(adc_T >> 3) - ((int64_t)dig_T1 << 1);
-    int64_t d2 = (int64_t)(adc_T >> 4) - (int64_t)dig_T1;
-    int32_t v1 = (int32_t)((d1 * (int64_t)dig_T2) >> 11);
-    int32_t v2 = (int32_t)(((d2 * d2) >> 12) * (int64_t)dig_T3 >> 14);
-    t_fine = v1 + v2;
-  }
-  *temp_c = (float)((t_fine * 5 + 128) >> 8) / 100.0f;
-
-  /* Pressure, 64-bit integer (datasheet 4.2.3) */
-  {
-    int64_t v1 = ((int64_t)t_fine) - 128000;
-    int64_t v2 = v1 * v1 * (int64_t)dig_P6;
-    v2 = v2 + ((v1 * (int64_t)dig_P5) << 17);
-    v2 = v2 + ((int64_t)dig_P4 << 35);
-    v1 = ((v1 * v1 * (int64_t)dig_P3) >> 8) + ((v1 * (int64_t)dig_P2) << 12);
-    v1 = (((((int64_t)1) << 47) + v1) * (int64_t)dig_P1) >> 33;
-    if (v1 == 0) {
-      *press_hpa = 0.0f;   /* P1 == 0: fail-safe, no division */
-    } else {
-      int64_t p = 1048576 - adc_P;
-      p = (((p << 31) - v2) * 3125) / v1;
-      v1 = ((int64_t)dig_P9 * (p >> 13) * (p >> 13)) >> 25;
-      v2 = ((int64_t)dig_P8 * p) >> 19;
-      *press_hpa = (float)((p + v1 + v2) >> 8) / 100.0f;   /* Pa -> hPa */
-    }
-  }
-
-  /* Humidity (datasheet 4.2.3, float; consumes the t_fine above) */
-  var_h = (float)t_fine - 76800.0f;
-  var_h = (((float)adc_H) - ((float)dig_H4 * 64.0f + (float)dig_H5 / 16384.0f * var_h)) *
-          ((float)dig_H2 / 65536.0f *
-           (1.0f + (float)dig_H6 / 67108864.0f * var_h *
-                   (1.0f + (float)dig_H3 / 67108864.0f * var_h)));
-  hum = var_h * (1.0f - (float)dig_H1 * var_h / 524288.0f);
-  if (hum > 100.0f) hum = 100.0f;
-  if (hum < 0.0f) hum = 0.0f;
-  *hum_pct = hum;
+  *temp_c = (float)bme280_compensate_temp(&s_trim, adc_T, &t_fine) / 100.0f;
+  *press_hpa = bme280_compensate_press(&s_trim, adc_P, t_fine);
+  *hum_pct = bme280_compensate_hum(&s_trim, adc_H, t_fine);
 
   return 0;
 }
