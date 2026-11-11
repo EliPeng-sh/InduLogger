@@ -1,4 +1,5 @@
 #include "bsp/mpu6050/mpu6050.h"
+#include "bsp/mpu6050/mpu6050_id.h"
 #include "platform/stats/sensor_check.h"
 #include "platform/stats/stats.h"
 
@@ -10,7 +11,6 @@
 #define MPU_REG_ACCEL_CFG 0x1Cu
 #define MPU_REG_GYRO_CFG  0x1Bu
 #define MPU_REG_ACCEL_X   0x3Bu   /* burst 0x3B..0x48: accel 6B, temp 2B, gyro 6B */
-#define MPU_WHO_AM_I_ID   0x68u
 #define MPU_TIMEOUT_MS    100u
 #define MPU_LSB_PER_G     8192.0f   /* +-4 g range (AFS_SEL=1) */
 
@@ -46,14 +46,14 @@ int mpu6050_init(I2C_HandleTypeDef *hi2c)
   s_i2c = hi2c;
 
   if (read_reg(MPU_REG_WHO_AM_I, &who, 1) != 0) return -1;
-  if (who != MPU_WHO_AM_I_ID) {
-    /* GY-521 clones occasionally report a different ID; report once. Only add a
-     * whitelist value here after confirming the board on the bench is a clone. */
+  if (!mpu_id_accepted(who)) {
+    /* Whitelist in mpu6050_id.h: 0x68 MPU6050, 0x70 MPU6500 (bench board die).
+     * Unknown IDs are rejected fail-fast and reported once. */
     static int s_id_reported;
     stats_error(ERR_MPU_TIMEOUT);
     if (!s_id_reported) {
       s_id_reported = 1;
-      printf("MPU6050: WHO_AM_I=0x%02X, expected 0x68\r\n", (unsigned)who);
+      printf("MPU6050: WHO_AM_I=0x%02X, expected 0x68 or 0x70\r\n", (unsigned)who);
     }
     return -1;
   }
