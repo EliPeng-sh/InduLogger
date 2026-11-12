@@ -34,13 +34,13 @@
 | T5 | CI：host tests + 固件构建 + cppcheck，push 全绿 | ✓ `30649d0`+`e8eba0b` |
 | T6 | I2C + BME280 驱动：连通读数（p=1002 hPa）+ 拔线容错已上板取证；压力补偿 ×2.56 bug 被 Bosch oracle 主机 TDD 抓住并修复（`bme280_compensate` 隔离层）；拔线复插不自恢复=从机 FSM 卡死（踩坑 11）→ bus-clear 已补并复注验证自恢复 | ✓ `8f17104`+`35cacfe`+`efc20c6` |
 | **T7** | MPU6050 驱动 + 合理性检查：主机 TDD 全绿（2 套件），无传感器错误路径已取证（+1/2s、wm=372）；平坦/倾斜验证待硬件 | ✓（部分） |
-| T8 | SD + FATFS（需 SD 模块与卡） | 未开始 |
+| T8 | SD + FATFS：挂载/写入/回读 + 拔卡自恢复（插回 ≤4s）+ 脏卡（NRST×3 写中复位）每次重挂载，全部上板取证；发现并修复 **ST diskio `is_initialized` 缓存** bug（踩坑 14） | ✓ `815f3ca` |
 | **T10** | DWT + GPIO 打点基建：已实测 I2C 失败尝试 51.6 ms/次（稳定、<100ms 限界）；示波器交叉验证待仪器 | ✓（部分） |
 | T9、T11 | 三任务集成（需传感器+SD）/ 里程碑收官 | 未开始 |
 
-- 下一步顺序：① MPU6500 id 兼容（GY-521 实测 WHO_AM_I=0x70 非 0x68，寄存器基本
-  兼容）② T8 SD+FATFS（模块+卡已到货；先确认模块供电类型）
-  ③ T9 三任务集成 → T11 收官
+- 下一步顺序：① MPU6500 id 兼容已主机合入（`ff96b88`，板证待 MPU 插回）→ T7 平坦/
+  倾斜上板取证 ② T9 三任务集成（CSV formatter 先做主机 TDD）③ T10 示波器交叉验证
+  ④ T11 收官（tag + 合 main）
 - WSL `/tmp` 目前 100% 满（opencode 的 `oc_readonly.db` 占 4 GB，用户自行处理）→ 编译
   命令加 `TMPDIR=/home/eli_peng/tmp` 前缀即可绕过
 
@@ -140,6 +140,13 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
     （`bme280_compensate.{h,c}`）是主机 TDD 能抓住这类 bug 的前提
 13. 板断电（USB 拔插）后 ST-LINK VCP 重枚举，`serial_capture.sh` 可能瞬时找不到
     COM——重试即可；PowerShell 命令外层用**单引号**（双引号内 `$_` 会被 bash 展开）
+14. **ST diskio.c 的 `disk.is_initialized[]` 缓存**：ST 给 `disk_initialize` 包了层
+    缓存，FatFs 永远不清它 → 重插卡（=上电卡，需完整 CMD0/ACMD41 重 init）永远
+    不会被重新初始化，re-mount 从缓存"成功"后 CMD17 打在未初始化卡上 → FR_DISK_ERR
+    死循环。修复：I/O 失败时同时清 glue 标志 + `disk.is_initialized[0]`；且
+    `sd_spi_init` 入口强制回 400kHz（上次 init 的快速分频会残留毁掉重 init）。
+    排查此类"烧录成功却旧行为"用 **CubeProgrammer `-u` 读回 flash 与 build/bin
+    做 `cmp` 字节比对**（参数顺序：地址 大小 文件；路径用 `C:\temp`，WSL 路径不通）
 
 ## 9. 会话工作法（沿用既有节奏）
 
@@ -149,11 +156,11 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 - 给用户的说明用中文；代码、commit message、文档正文用英文
 - 证据纪律：一个功能说"完成"前必须有板上证据（串口输出/CI 绿/测试通过）
 
-## 10. 下一步清单（T6 完成后）
+## 10. 下一步清单（T8 完成后）
 
-1. **MPU6500 id 兼容**（主机 TDD）：GY-521 实测 WHO_AM_I=0x70（非 6050 的 0x68），
-   寄存器基本兼容 → 驱动接受 {0x68, 0x70} → MPU 插回 wires → T7 平坦/倾斜上板取证
-2. **T8 SD+FATFS**：`stm32/bsp/sdcard/{sd_spi.c,sd_spi.h,user_diskio_glue.c}` +
-   `app_logger.c`；SPI1 PB3/PB4/PB5 + PA4 CS（丝印 D5/D4/D3/A2）；**先确认 SD 模块
-   是 5V+稳压型还是 3.3V 直供型**再接线；init 400kHz→12.5MHz，全部 100ms 限界
-3. T9 三任务集成（CSV formatter 可先于 SD 硬件做主机 TDD）→ T11 收官
+1. **T7 平坦/倾斜上板取证**：MPU6500 id 兼容已主机合入（`ff96b88`）→ MPU 插回
+   I2C 总线（与 BME280 共线）→ 烟测 ax/ay/az（平放 ≈1g 合理 + 倾斜 90° 轴切换）
+2. **T9 三任务集成**：CSV formatter 先做主机 TDD（logger_format_csv，2 位小数）→
+   Sensor/Logger/Monitor 三任务 + sensorQ + alive-mask 心跳喂狗
+3. T10 示波器交叉验证（BENCH_GPIO1 打点 vs DWT）
+4. T11 收官：文档 + 干净重建 + tag m1-skeleton + 合入 main

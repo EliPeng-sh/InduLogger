@@ -490,11 +490,11 @@ FRESULT sdcard_append_line(const char *path, const char *line); // opens FA_OPEN
 ```
 Config defaults (`config.h`): `LOG_PATH "0:indulog.csv"`, `SAMPLE_PERIOD_MS 500`, `SENSOR_Q_LEN 16`.
 
-- [ ] **Step 1: Implement SPI-SD driver + diskio glue**
+- [x] **Step 1: Implement SPI-SD driver + diskio glue**
 
 `sd_spi.c`: standard SPI-mode SD init (74 dummy clocks CS-high → CMD0 until idle → CMD8 0x1AA → ACMD41(HCS) → CMD58 OCR check) and single-block read(CMD17)/write(CMD24) over SPI1 at 400 kHz init then **12.5 MHz** (SPI1 prescaler /8 — from the 100 MHz APB2 the integer steps are 50/25/12.5 MHz, so 12.5 is the safe breadboard choice); CRC off after CMD0 (CMD59=0). **Every SPI transfer uses a bounded HAL timeout (100 ms)** — same rule as I2C: a stuck or removed card shows up as a timeout or 0xFF/0x00 dummy reads, bails out with no retry loops, and maps to `disk_*` error returns so FATFS reports failure (Review Focus #2 depends on SPI not hanging). Implement the FATFS glue (`disk_initialize/disk_read/disk_write/disk_ioctl`) in `user_diskio_glue.c` mapping to these functions (this fills the CubeMX `user_diskio.c` stubs — do it via the glue file so CubeMX regen-safe).
 
-- [ ] **Step 2: Mount + write + readback test**
+- [x] **Step 2: Mount + write + readback test**
 
 Temporary test in default task (once, on boot):
 ```c
@@ -505,20 +505,22 @@ if (sdcard_mount() == FR_OK) {
 ```
 Build + flash → serial: `sd: mounted, readback: boot,ok`.
 
-- [ ] **Step 3: Pull-card fault injection (Review Focus #2)**
+- [x] **Step 3: Pull-card fault injection (Review Focus #2)**
 
 With periodic appends running: physically pull the card → expect `ERR_SD_WRITE` counter increments and **board keeps running** (LED alive); re-insert → next mount attempt succeeds and appends resume.
 
-- [ ] **Step 4: Dirty-card tolerance (Review Focus #4)**
+- [x] **Step 4: Dirty-card tolerance (Review Focus #4)**
 
 Start an append loop, then **press NRST mid-write** repeatedly (simulating watchdog reset during flash/FATFS activity). After each reset: card mounts, file appends continue (partial last line acceptable — document in code comment that CSV consumers tolerate truncated last line).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add stm32/bsp/sdcard stm32/app stm32/platform/config
 git commit -m "feat(sdcard): SPI-SD + FATFS, pull-card and dirty-card fault-injection verified"
 ```
+
+**Status (2026-11-12): complete on target.** All three fault-injection cases evidenced on board: mount + append + readback (`sd: mounted, readback: boot,ok`), pull-card (bounded failure, ERR_SD_WRITE increments, board alive, wm stable, zero resets) and **auto-recovery after re-insert ≤ 4 s**, dirty-card (3× NRST mid-write → remount + readback ok after every boot, `reset cause: external-pin`). The debugging arc found and fixed a real reliability gap: ST's `diskio.c` caches `disk.is_initialized[]` and FatFs never clears it, so a re-seated card (= a power-on card needing the full CMD0/ACMD41 init again) was never re-initialized — every re-mount "succeeded" from the cache, hit the un-initialized card with CMD17, and failed with FR_DISK_ERR forever. Fix: `io_failed_invalidate()` clears both the glue `s_inited` flag and the ST cache; `sd_spi_init` re-forces 400 kHz at entry (a previous init's fast prescaler carried over and broke re-init). Ruling vs plan: data speed 6.25 MHz (prescaler 16), not the planned 12.5 MHz — board evidence showed 12.5 MHz marginal over dupont wiring + module level shifters. Boot banner now carries firmware build identity (`InduLogger boot v0.1.0-m1 (date time)`) after two rounds were burned on firmware-identity ambiguity.
 
 ### Task 9: Three-task integration — Sensor→Queue→Logger + Monitor diagnostics
 
