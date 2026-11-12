@@ -12,7 +12,7 @@ void console_init(void) {
   /* USART2 already configured by CubeMX. Unbuffered stdout: no newlib internal
    * 1KB malloc on first printf, output stays immediate. */
   setvbuf(stdout, NULL, _IONBF, 0);
-  printf("\r\nInduLogger boot v0.1.0-m1\r\n");
+  printf("\r\nInduLogger boot v0.1.0-m1 (%s %s)\r\n", __DATE__, __TIME__);
 }
 
 int _write(int fd, char *ptr, int len) {

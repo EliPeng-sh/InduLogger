@@ -24,6 +24,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include "app/industrial_logger/app_logger.h"
 #include "app/industrial_logger/app_sensors.h"
 #include "platform/console/console.h"
 #include "platform/diag/diag.h"
@@ -448,11 +449,13 @@ void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
   static uint32_t n = 0;
+  app_logger_boot(); /* T8 Step 2: mount + append + readback evidence (once) */
   for (;;) {
     HAL_GPIO_TogglePin(LED_HEARTBEAT_GPIO_Port, LED_HEARTBEAT_Pin);
     iwdg_feed(); /* single-task skeleton feeding; Task 9 moves feeding to the Monitor alive-mask */
     if (++n % 4u == 0u) {
       app_sensors_tick(); /* T6 smoke: every 2 s */
+      app_logger_tick(); /* T8: periodic append, self-heals around card removal */
     }
     vTaskDelay(pdMS_TO_TICKS(500));
   }
