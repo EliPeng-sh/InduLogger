@@ -32,7 +32,7 @@ Milestone plan with per-task checkboxes (the progress ledger):
 
 | Doc | Contents |
 |---|---|
-| [`docs/specs/2026-10-27-indulogger-design.md`](docs/specs/2026-10-27-indulogger-design.md) | Design specification (Chinese): architecture, layers, requirements, acceptance claims |
+| [`docs/specs/indulogger-design.md`](docs/specs/indulogger-design.md) | Design specification + **live implementation-status section** (Chinese): architecture, layers, requirements, acceptance claims, milestone-to-evidence map |
 | [`docs/plans/2026-10-29-m1-stm32-skeleton.md`](docs/plans/2026-10-29-m1-stm32-skeleton.md) | M1 implementation plan, 11 tasks, checkbox = progress |
 | [`docs/validation/README.md`](docs/validation/README.md) | Evidence index — every claim with result and methodology |
 | [`docs/notes/toolchain.md`](docs/notes/toolchain.md) | Toolchain versions and repository conventions |

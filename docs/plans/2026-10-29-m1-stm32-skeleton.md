@@ -10,7 +10,7 @@
 
 **Tech Stack:** C11 · STM32F411RE (Nucleo) · FreeRTOS (native API over the CMSIS_V1 wrapper, heap_4) · STM32CubeIDE (Windows native — .ioc codegen + graphical debug only) · repo Makefile + arm-none-eabi-gcc (build) · STM32CubeProgrammer CLI (flash) · Unity (host tests) · GitHub Actions
 
-**Spec:** `docs/specs/2026-10-27-indulogger-design.md` (Milestone = spec §14 row W1–W2; evidence infra = spec §3/§4 v1 "证据基建" items; watchdog/health = §8)
+**Spec:** `docs/specs/indulogger-design.md` (Milestone = spec §14 row W1–W2; evidence infra = spec §3/§4 v1 "证据基建" items; watchdog/health = §8)
 
 ## Global Constraints
 
@@ -543,7 +543,7 @@ drop-newest → ERR_Q_DROP; default task reduced to LED heartbeat). Board eviden
 counters 0, zero resets); hung-Logger injection → **5 deterministic IWDG reset cycles
 (`reset cause: iwdg`, ~2-3 s each)** → wedge removed → healthy zero-reset run (wm
 stable, byte-level flash cmp verified firmware identity). Full report:
-`docs/reports/2026-11-16-t9-three-task-watchdog-report.md`. Remaining: Step 6
+`docs/reports/t9-three-task-watchdog.md`. Remaining: Step 6
 queue-overflow stress, Step 7 commit.
 
 **Files:**

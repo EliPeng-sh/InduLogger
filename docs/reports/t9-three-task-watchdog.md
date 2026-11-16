@@ -11,7 +11,7 @@
 
 ## 一、为什么测：从设计 spec 三主张倒推
 
-InduLogger 的作品集定位建立在三个**可测量**的工程主张上（spec `docs/specs/2026-10-27-indulogger-design.md`）：**real-time（采样不被存储拖死）／reliability（任何单点挂死系统都能救回）／observability（健康状态可观测）**。
+InduLogger 的作品集定位建立在三个**可测量**的工程主张上（spec `docs/specs/indulogger-design.md` §0/§3）：**real-time（采样不被存储拖死）／reliability（任何单点挂死系统都能救回）／observability（健康状态可观测）**。
 
 T6-T8 已经证明单任务形态下这三点的雏形（I2C 100ms 限界容错、传感器合理性检查、SD 拔卡自恢复）。但单任务架构有一个**结构性盲区**：
 
