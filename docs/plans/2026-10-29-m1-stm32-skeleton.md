@@ -535,6 +535,17 @@ git commit -m "feat(sdcard): SPI-SD + FATFS, pull-card and dirty-card fault-inje
 
 ### Task 9: Three-task integration — Sensor→Queue→Logger + Monitor diagnostics
 
+**Status (2026-11-16): Steps 1–5 complete on target, Step 6–7 open.** CSV formatter +
+alive-mask decision logic host-TDD'd RED→GREEN (7/7 suites). Three-task pipeline wired
+(sensor 512w prio3 / logger 1024w prio2 / monitor 512w prio1, sensorQ 16 deep,
+drop-newest → ERR_Q_DROP; default task reduced to LED heartbeat). Board evidence:
+[mon] diagnostics block every 5 s (wm 364-689/456 ≥40, heap 18288/18288, all error
+counters 0, zero resets); hung-Logger injection → **5 deterministic IWDG reset cycles
+(`reset cause: iwdg`, ~2-3 s each)** → wedge removed → healthy zero-reset run (wm
+stable, byte-level flash cmp verified firmware identity). Full report:
+`docs/reports/2026-11-16-t9-three-task-watchdog-report.md`. Remaining: Step 6
+queue-overflow stress, Step 7 commit.
+
 **Files:**
 - Create: `stm32/app/industrial_logger/logger_format.h`, `stm32/app/industrial_logger/logger_format.c`
 - Create: `host/tests/test_csv_format.c`
@@ -561,7 +572,7 @@ extern QueueHandle_t sensorQ; // struct sensor_sample {uint32_t ts_ms; float t,h
 ```
 MonitorTask: every 1 s — `if (wd_all_alive()) iwdg_feed();` (a hung Sensor/Logger freezes its heartbeat → feeding stops → IWDG resets within ~2 s; the default task stops feeding from here on). Every 5 s it prints: uptime, reset cause, per-task stack high-water (via `uxTaskGetStackHighWaterMark`), heap free/largest (`xPortGetFreeHeapSize`/`xPortGetMinimumEverFreeHeapSize`), all error counters.
 
-- [ ] **Step 1: Write failing CSV formatter test**
+- [x] **Step 1: Write failing CSV formatter test** *(2026-11-16 RED→GREEN; gold row + small-buffer-error cases)*
 
 `host/tests/test_csv_format.c`:
 ```c
@@ -576,20 +587,20 @@ void test_row_format(void) {
 ```
 Run ctest (Task 4 command) → Expected: FAIL.
 
-- [ ] **Step 2: Implement `logger_format.c`** (`snprintf` with `"%" PRIu32 ",%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n"`), add to host build, run ctest → PASS (now 4/4 test executables incl. csv).
+- [x] **Step 2: Implement `logger_format.c`** (`snprintf` with `"%" PRIu32 ",%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n"`), add to host build, run ctest → PASS (now 4/4 test executables incl. csv). *(2026-11-16; truncation → -1, final 7/7 with wd tests)*
 
-- [ ] **Step 3: Wire tasks + queue + alive-mask watchdog**
+- [x] **Step 3: Wire tasks + queue + alive-mask watchdog** *(2026-11-16; native xTaskCreate in RTOS_THREADS, sensorQ 16, Monitor entry wd_monitor_reset() boot-race fix; ruling: wd logic host-testable via __atomic, NOT HOST_TEST-guarded; INCLUDE_vTaskDelayUntil via #undef+define in USER CODE Defines)*
   (a) drop-newest policy on full: `xQueueSend` with 0 tick timeout → `stats_error(ERR_Q_DROP)`;
   (b) LoggerTask loop uses `xQueueReceive(..., pdMS_TO_TICKS(250))` and calls `wd_heartbeat(WD_HB_LOGGER)` every iteration — including the empty-queue timeout path, so the heartbeat advances even with no data; SensorTask calls `wd_heartbeat(WD_HB_SENSOR)` every sample;
   (c) MonitorTask: every 1 s `if (wd_all_alive()) iwdg_feed();`; every 5 s the diagnostics block; **remove** the default task's `iwdg_feed()` in main.c's `StartDefaultTask` (heartbeat LED only from here on);
   (d) LoggerTask writes header line once when file is empty (`f_lseek` end==0 → `"ts_ms,temp_c,hum_pct,press_hpa,ax_g,ay_g,az_g\n"`);
   (e) `stats.{h,c}`: add the four wd_heartbeat items above (target side: `__atomic_fetch_add` per counter + snapshot compare; all inside `#ifndef HOST_TEST` so host builds still pass).
 
-- [ ] **Step 4: On-target functional check**
+- [x] **Step 4: On-target functional check** *(2026-11-16 board: [mon] ×15 exact 5s, wm=372/689/456→364 all ≥40, heap 18288/18288, counters all 0, zero resets; console otherwise silent — per-sample prints removed)*
 
 Serial: 2 Hz samples land in `indulog.csv` (verify by re-inserting card in PC reader); Monitor block prints every 5 s with sane values; stack watermarks ≥ 40 words reported (if any task < 40, increase its stack by 256 words and re-verify).
 
-- [ ] **Step 5: Hung-task live-guard check (Review Focus #4)**
+- [x] **Step 5: Hung-task live-guard check (Review Focus #4)** *(2026-11-16 board: wedge = vTaskDelay(portMAX_DELAY) at loop top → 5 deterministic reset cycles, ALL `reset cause: iwdg`, ~2-3s each; wedge removed → healthy zero-reset run; firmware identity byte-cmp verified — false alarm resolved by timeline)*
 
 Temporarily wedge LoggerTask (comment its `wd_heartbeat(WD_HB_LOGGER)` call and busy-wait after the first sample) → within ~3 s the board resets itself and the console shows `reset cause: iwdg` on the auto-reboots — proof the alive-mask starves the watchdog when an app task hangs (the Task 4 default-task feed cannot catch this). Restore the heartbeat call.
 
