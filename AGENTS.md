@@ -33,14 +33,13 @@
 | T4 | stats：复位原因解码（主机 TDD 3/3）+ IWDG + 错误计数器 | ✓ `7b87824` |
 | T5 | CI：host tests + 固件构建 + cppcheck，push 全绿 | ✓ `30649d0`+`e8eba0b` |
 | T6 | I2C + BME280 驱动：连通读数（p=1002 hPa）+ 拔线容错已上板取证；压力补偿 ×2.56 bug 被 Bosch oracle 主机 TDD 抓住并修复（`bme280_compensate` 隔离层）；拔线复插不自恢复=从机 FSM 卡死（踩坑 11）→ bus-clear 已补并复注验证自恢复 | ✓ `8f17104`+`35cacfe`+`efc20c6` |
-| **T7** | MPU6050 驱动 + 合理性检查：主机 TDD 全绿（2 套件），无传感器错误路径已取证（+1/2s、wm=372）；平坦/倾斜验证待硬件 | ✓（部分） |
+| T7 | MPU6050 驱动 + 合理性检查：主机 TDD 全绿（2 套件）；无传感器错误路径取证；id 兼容 MPU6500（0x70，`ff96b88`）；倾斜轴切换（+X→−Y，1.013g）+ 平放（az=1.06g）+ 拔线容错全部上板取证 | ✓ `6aaa543`+`ff96b88` |
 | T8 | SD + FATFS：挂载/写入/回读 + 拔卡自恢复（插回 ≤4s）+ 脏卡（NRST×3 写中复位）每次重挂载，全部上板取证；发现并修复 **ST diskio `is_initialized` 缓存** bug（踩坑 14） | ✓ `815f3ca` |
 | **T10** | DWT + GPIO 打点基建：已实测 I2C 失败尝试 51.6 ms/次（稳定、<100ms 限界）；示波器交叉验证待仪器 | ✓（部分） |
 | T9、T11 | 三任务集成（需传感器+SD）/ 里程碑收官 | 未开始 |
 
-- 下一步顺序：① MPU6500 id 兼容已主机合入（`ff96b88`，板证待 MPU 插回）→ T7 平坦/
-  倾斜上板取证 ② T9 三任务集成（CSV formatter 先做主机 TDD）③ T10 示波器交叉验证
-  ④ T11 收官（tag + 合 main）
+- 下一步顺序：① T9 三任务集成（CSV formatter 先做主机 TDD）→ ② T10 示波器交叉验证
+  → ③ T11 收官（tag + 合 main）
 - WSL `/tmp` 目前 100% 满（opencode 的 `oc_readonly.db` 占 4 GB，用户自行处理）→ 编译
   命令加 `TMPDIR=/home/eli_peng/tmp` 前缀即可绕过
 
@@ -147,6 +146,13 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
     `sd_spi_init` 入口强制回 400kHz（上次 init 的快速分频会残留毁掉重 init）。
     排查此类"烧录成功却旧行为"用 **CubeProgrammer `-u` 读回 flash 与 build/bin
     做 `cmp` 字节比对**（参数顺序：地址 大小 文件；路径用 `C:\temp`，WSL 路径不通）
+15. **蜂鸣档 DC 导通 ≠ 时钟信号完整性**：SD 卡"完全沉默"排查中，杜邦线蜂鸣全通、
+    卡座有 3.3V、重插卡都无效，最后万用表笔一碰就好——边际接触能过 DC 却圆掉
+    400kHz 时钟沿，CMD0 永远无应答。教训：DC 工具排除不了信号完整性问题，
+    排查顺序应尽早做"物理重插"对照实验
+16. **boot 横幅 `__DATE__/__TIME__` 是按编译单元固化的**：增量构建不重编 console.c
+    → 横幅时间戳陈旧，**横幅时间戳单独不能当固件身份证据**；确认身份用构建尺寸
+    比对 + CubeProgrammer `-u` 读回 cmp，或 `touch console.c` 后重建
 
 ## 9. 会话工作法（沿用既有节奏）
 
@@ -156,11 +162,12 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 - 给用户的说明用中文；代码、commit message、文档正文用英文
 - 证据纪律：一个功能说"完成"前必须有板上证据（串口输出/CI 绿/测试通过）
 
-## 10. 下一步清单（T8 完成后）
+## 10. 下一步清单（T7 完成后）
 
-1. **T7 平坦/倾斜上板取证**：MPU6500 id 兼容已主机合入（`ff96b88`）→ MPU 插回
-   I2C 总线（与 BME280 共线）→ 烟测 ax/ay/az（平放 ≈1g 合理 + 倾斜 90° 轴切换）
-2. **T9 三任务集成**：CSV formatter 先做主机 TDD（logger_format_csv，2 位小数）→
-   Sensor/Logger/Monitor 三任务 + sensorQ + alive-mask 心跳喂狗
-3. T10 示波器交叉验证（BENCH_GPIO1 打点 vs DWT）
-4. T11 收官：文档 + 干净重建 + tag m1-skeleton + 合入 main
+1. **T9 三任务集成**：CSV formatter 先做主机 TDD（logger_format_csv，2 位小数）→
+   Sensor/Logger/Monitor 三任务 + sensorQ + alive-mask 心跳喂狗（wd_heartbeat/
+   wd_all_alive，Monitor 1s 喂狗）→ 挂死任务检查（去 Logger 心跳→~3s IWDG 复位）
+   + 队列压力（SAMPLE_PERIOD_MS 10）
+2. T10 示波器交叉验证（BENCH_GPIO1 打点 vs DWT ±10%）
+3. T11 收官：文档（README 状态、validation index 补 T7/T8 行）+ 干净重建 +
+   tag m1-skeleton + 合入 main

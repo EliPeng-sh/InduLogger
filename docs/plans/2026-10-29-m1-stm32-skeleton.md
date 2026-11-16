@@ -420,10 +420,15 @@ git commit -m "feat(bme280): I2C driver with 100ms bound, error counters, smoke 
 
 ### Task 7: MPU6050 driver + sensor plausibility checks (host TDD)
 
-**Status (2026-11-06): host TDD green (`sensor_plausible_bme`/`_mpu`, 2 suites pass), MPU6050
-driver implemented. On-target no-sensor evidence: `MPU6050 init failed` +1 retry/2 s, zero
-resets, stack watermark wm=372 words free (>= 40). Flat/tilt/disconnect cases pending
-MPU6050 hardware.**
+**Status (2026-11-16): COMPLETE on target.** WHO_AM_I id-compat shipped (`ff96b88`,
+host TDD: the bench GY-521 die reports 0x70, driver accepts {0x68, 0x70}). Board
+evidence: `MPU6050 init ok` + readings on the shared I2C bus (BME280 unaffected,
+275 us/read). Tilt case: module rotated 90°, gravity moved +X (ax=+1.03) → −Y
+(ay=−1.01), both states stable, magnitude 1.013 g (1.3% err). Flat case: chip-face-up
+az=+1.05…1.07, |ax|,|ay|≤0.08, magnitude ≈1.06 g (6.3% err). The "axis facing up
+reads +1 g" convention is self-consistent across all three orientations. Disconnect
+case: `MPU6050 init failed` +1/2s, board alive, zero resets (captured repeatedly
+during T6-T8 sessions while the MPU was unplugged).**
 
 **Files:**
 - Create: `stm32/bsp/mpu6050/mpu6050.h`, `stm32/bsp/mpu6050/mpu6050.c`
@@ -463,9 +468,15 @@ void test_mpu_flat(void)     { TEST_ASSERT_FALSE(sensor_plausible_mpu(5.0f, 0.0f
 
 init: `WHO_AM_I` (0x75) == 0x68 — cheap GY-521 clones sometimes return a different ID; on mismatch fail init + count the error and print the observed ID once (whitelist a clone's value only with a code comment after confirming the board is a clone); wake `PWR_MGMT_1=0x00`; `ACCEL_CONFIG=0x08` (±4g), `GYRO_CONFIG=0x08` (±500 dps); read: burst 14B from 0x3B, scale accel `raw/8192.0f`. Timeouts 100 ms → `stats_error(ERR_MPU_TIMEOUT)`. Any out-of-range reading → `stats_error(ERR_SENSOR_RANGE)`, return last-good.
 
-- [ ] **Step 5: On-target verification**
+- [x] **Step 5: On-target verification**
 
 Extend smoke print with MPU line (`ax,ay,az`); board flat on desk → magnitude ≈ 1.0 g ±0.1. Tilt board 90° → az→0, ax→±1. Disconnect sensor → error counter increments, task survives.
+
+(Evidence 2026-11-16: tilt axis swap +X→−Y stable at 1.013 g; flat chip-up az=+1.06 g,
+|ax|,|ay|≤0.08; disconnect case captured during unplugged sessions. One flat attempt
+failed harmlessly: the BME280 module was moved instead of the GY-521 — BME has no
+accelerometer, readings frozen at ax=+1.03; module-ID lesson: GY-521 has 8 pins and
+no metal lid, the BME280 breakout has 4 pins and a metal humidity lid.)
 
 - [x] **Step 6: Commit**
 
