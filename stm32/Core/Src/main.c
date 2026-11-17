@@ -25,7 +25,9 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include "app/industrial_logger/app_logger.h"
+#include "app/industrial_logger/app_monitor.h"
 #include "app/industrial_logger/app_sensors.h"
+#include "platform/config/config.h"
 #include "platform/console/console.h"
 #include "platform/diag/diag.h"
 #include "platform/stats/stats.h"
@@ -59,7 +61,12 @@ DMA_HandleTypeDef hdma_usart1_rx;
 
 osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
-
+/* Task 9 (T9): Sensor -> sensorQ -> Logger; Monitor alive-masks the IWDG.
+ * Handles live here (single creation point) and are read by app_monitor.c. */
+QueueHandle_t sensorQ;
+TaskHandle_t sensorTaskHandle;
+TaskHandle_t loggerTaskHandle;
+TaskHandle_t monitorTaskHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -122,7 +129,7 @@ int main(void)
   DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP; /* pause IWDG under debugger */
   diag_dwt_init(); /* DWT cycle counter + bench GPIOs (T10) */
   console_init(); /* banner + printf retarget over ST-LINK VCP */
-  printf("reset cause: %s\r\n", reset_cause_name(reset_cause_capture()));
+  printf("reset cause: %s\r\n", reset_cause_name(stats_boot_cause()));
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -147,7 +154,24 @@ int main(void)
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  /* Task 9: Sensor -> sensorQ -> Logger (CSV); Monitor feeds IWDG on the
+   * alive-mask. Queue first (producers/consumers start with it in place). */
+  sensorQ = xQueueCreate(SENSOR_Q_LEN, sizeof(sensor_sample_t));
+  configASSERT(sensorQ != NULL);
+  /* Priorities (T9 Step 6 board finding): the Monitor must outrank the
+   * throughput worker. At 200 Hz stress sampling the queue stays full and the
+   * logger busy-loops (xQueueReceive never blocks); at prio 1 the monitor was
+   * starved below the logger's prio 2 -> no wd_all_alive() -> no IWDG feed ->
+   * ~2 s resets (26 cycles captured). Watchdog-check at prio 2 costs nothing
+   * (runs microseconds per second); the logger at prio 1 still receives the
+   * sensor's blocking gaps (~90% of CPU at any realistic sample rate). */
+  xTaskCreate(app_sensor_task, "sensor", 512, NULL, 3, &sensorTaskHandle);
+  xTaskCreate(app_logger_task, "logger", 1024, NULL, 1, &loggerTaskHandle);
+  /* Monitor = HIGHEST priority (board evidence, stress round): a throughput
+   * task that keeps missing its deadline (vTaskDelayUntil with work longer
+   * than the period never blocks = never yields) starves every lower-prio
+   * task, watchdog included. The watchdog must preempt. */
+  xTaskCreate(app_monitor_task, "monitor", 512, NULL, 4, &monitorTaskHandle);
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -448,15 +472,11 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
-  static uint32_t n = 0;
-  app_logger_boot(); /* T8 Step 2: mount + append + readback evidence (once) */
+  /* Task 9 moved everything out of this loop: sensors -> Sensor task,
+   * logging -> Logger task, IWDG feeding -> Monitor alive-mask. The default
+   * task is only the visible heartbeat now. */
   for (;;) {
     HAL_GPIO_TogglePin(LED_HEARTBEAT_GPIO_Port, LED_HEARTBEAT_Pin);
-    iwdg_feed(); /* single-task skeleton feeding; Task 9 moves feeding to the Monitor alive-mask */
-    if (++n % 4u == 0u) {
-      app_sensors_tick(); /* T6 smoke: every 2 s */
-      app_logger_tick(); /* T8: periodic append, self-heals around card removal */
-    }
     vTaskDelay(pdMS_TO_TICKS(500));
   }
   /* USER CODE END 5 */

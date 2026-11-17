@@ -12,9 +12,10 @@
  * failures print and return. */
 void app_logger_boot(void);
 
-/* Periodic append ("tick,<seq>") with auto re-mount when the card disappears
- * or comes back. Every failed append counts into ERR_SD_WRITE. */
-void app_logger_tick(void);
+/* Logger task body (Task 9): boot-once + CSV header-once, then drain sensorQ
+ * into LOG_PATH rows; re-mounts when the card comes back and beats the
+ * alive-mask watchdog on every loop iteration (incl. queue-timeout paths). */
+void app_logger_task(void *argument);
 
 FRESULT sdcard_mount(void);
 FRESULT sdcard_append_line(const char *path, const char *line);

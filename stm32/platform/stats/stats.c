@@ -63,3 +63,54 @@ reset_cause_t reset_cause_capture(void) {
 }
 
 #endif /* !HOST_TEST */
+
+/* ---- Alive-mask watchdog (Task 9) ----
+ * __atomic builtins compile on both host gcc and arm-none-eabi-gcc, so this
+ * logic is host-tested (test_wd_alive) instead of HOST_TEST-guarded. */
+
+static uint32_t s_hb[WD_HB_COUNT];      /* per-task heartbeat counters */
+static uint32_t s_hb_snap[WD_HB_COUNT]; /* Monitor's last-seen snapshot */
+
+void wd_heartbeat(uint32_t id)
+{
+  if (id < WD_HB_COUNT) {
+    (void)__atomic_fetch_add(&s_hb[id], 1U, __ATOMIC_RELAXED);
+  }
+}
+
+bool wd_all_alive(void)
+{
+  int alive = 1;
+  for (uint32_t i = 0; i < WD_HB_COUNT; i++) {
+    uint32_t now = __atomic_load_n(&s_hb[i], __ATOMIC_RELAXED);
+    if (now == s_hb_snap[i]) {
+      alive = 0; /* this task's heartbeat froze since the previous check */
+    }
+    s_hb_snap[i] = now;
+  }
+  return alive;
+}
+
+void wd_monitor_reset(void)
+{
+  for (uint32_t i = 0; i < WD_HB_COUNT; i++) {
+    s_hb_snap[i] = __atomic_load_n(&s_hb[i], __ATOMIC_RELAXED);
+  }
+}
+
+/* Boot reset cause cache: capture() clears the RCC flags, so the value must
+ * be taken once (main.c boot print takes it first, Monitor reuses it). */
+reset_cause_t stats_boot_cause(void)
+{
+#ifndef HOST_TEST
+  static reset_cause_t s_boot_cause = RESET_CAUSE_UNKNOWN;
+  static int s_boot_cause_valid;
+  if (!s_boot_cause_valid) {
+    s_boot_cause = reset_cause_capture();
+    s_boot_cause_valid = 1;
+  }
+  return s_boot_cause;
+#else
+  return RESET_CAUSE_UNKNOWN; /* host: no RCC flags; cause itself not under test */
+#endif
+}

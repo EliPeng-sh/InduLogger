@@ -138,6 +138,10 @@ standard names. */
 /* USER CODE BEGIN Defines */
 /* Section where parameter definitions can be added (for instance, to override default ones in FreeRTOS.h) */
 #define INCLUDE_uxTaskGetStackHighWaterMark 1   /* T6 stack evidence; placed here so CubeMX regen keeps it */
+/* T9 Sensor/Monitor periodic loops: CubeMX generated section sets this to 0,
+ * so undef-then-redefine here (regen-safe, no redefinition warning). */
+#undef INCLUDE_vTaskDelayUntil
+#define INCLUDE_vTaskDelayUntil 1
 /* USER CODE END Defines */
 
 #endif /* FREERTOS_CONFIG_H */
