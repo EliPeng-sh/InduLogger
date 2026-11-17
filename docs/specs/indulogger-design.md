@@ -13,7 +13,7 @@
 > `docs/reports/tN-*.md` 看"每个阶段怎么证明的"；`docs/plans/*.md` 是任务级执行台账
 > （checkbox 即进度）；`AGENTS.md` 是开发会话记忆。
 
-**更新**: 2026-11-16 · M1（W1–W2）进行中：T1–T8 ✓，T9 ◐，T10 ◐，T11 未开始
+**更新**: 2026-11-17 · M1（W1–W2）进行中：T1–T9 ✓，T10 ◐，T11 未开始
 
 ### M1 任务进度
 
@@ -23,7 +23,7 @@
 | T6 ✓ | I2C/BME280：连通读数 + 拔线容错 + 从机卡死自恢复（**可靠性**）；压力补偿 ×2.56 bug 被主机 TDD 抓住修复 | `8f17104`+`35cacfe`+`efc20c6`；报告 `docs/reports/t6-pressure-compensation-bug.md` |
 | T7 ✓ | MPU6500 id 兼容 + 三轴静态取证（平放 az=1.06g / 轴切换 1.013g） | `6aaa543`+`ff96b88` |
 | T8 ✓ | SPI-SD + FATFS：挂载/写入/回读 + 拔卡自恢复 ≤4s + 脏卡重挂载（**可靠性**）；ST diskio 缓存 bug 修复 | `815f3ca`；报告 `docs/reports/t8-st-diskio-cache-bug.md` |
-| T9 ◐ | 三任务流水线 + alive-mask 看门狗：挂死 Logger → ~3s IWDG 复位、恢复零复位（**可靠性**）；[mon] 5s 诊断块（**可观测性**）；队列压力待测（**即时性**） | `a184666`；报告 `docs/reports/t9-three-task-watchdog.md` |
+| T9 ✓ | 三任务流水线 + alive-mask 看门狗：挂死 Logger → 5 轮确定性 ~3s IWDG 复位、恢复零复位（**可靠性**）；10ms 队列压力暴露并修复四层故障链（Monitor 优先级 4 / init 路径总线清障 / open-once 锁泄漏 / fallback 文件），压力下零复位、drop-newest 生效（**即时性+可靠性**）；[mon] 5s 诊断块（**可观测性**） | `e3a7007`；报告 `docs/reports/t9-three-task-watchdog.md` |
 | T10 ◐ | DWT + GPIO 打点基建（I2C 失败尝试 51.6ms 实测）；示波器交叉验证待仪器 | plan T10 |
 | T11 | 收官：文档 + 干净重建 + tag + 合 main | — |
 
