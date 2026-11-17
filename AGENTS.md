@@ -37,11 +37,10 @@
 | T7 | MPU6050 驱动 + 合理性检查：主机 TDD 全绿（2 套件）；无传感器错误路径取证；id 兼容 MPU6500（0x70，`ff96b88`）；倾斜轴切换（+X→−Y，1.013g）+ 平放（az=1.06g）+ 拔线容错全部上板取证 | ✓ `6aaa543`+`ff96b88` |
 | T8 | SD + FATFS：挂载/写入/回读 + 拔卡自恢复（插回 ≤4s）+ 脏卡（NRST×3 写中复位）每次重挂载，全部上板取证；发现并修复 **ST diskio `is_initialized` 缓存** bug（踩坑 14） | ✓ `815f3ca` |
 | **T10** | DWT + GPIO 打点基建：已实测 I2C 失败尝试 51.6 ms/次（稳定、<100ms 限界）；示波器交叉验证待仪器 | ✓（部分） |
-| **T9** | 三任务集成：CSV formatter + alive-mask 决策逻辑主机 TDD（7/7 套件）；三任务+队列布线（80884 text）；[mon] 5s 诊断块全指标健康板测；挂死 Logger 注入 → 5 轮确定性 IWDG 复位（`reset cause: iwdg`）+ 恢复零复位 | ◐ Steps 1-5 ✓（报告 docs/reports/t9-three-task-watchdog.md）；Step 6 队列压力 + Step 7 commit 待做 |
+| T9 | 三任务集成：主机 TDD（7/7）+ 布线 + [mon] 板测 + 挂死注入（5 轮确定性 iwdg 复位）+ 队列压力暴露三层故障链全修复（看门狗优先级 4 / init 路径总线清障 / open-once 锁泄漏 / fallback 文件） | ✓ `e3a7007`（报告 docs/reports/t9-three-task-watchdog.md） |
 | T11 | 里程碑收官（文档 + 干净重建 + tag + 合 main） | 未开始 |
 
-- 下一步顺序：① T9 三任务集成（CSV formatter 先做主机 TDD）→ ② T10 示波器交叉验证
-  → ③ T11 收官（tag + 合 main）
+- 下一步顺序：① T10 示波器交叉验证 → ② T11 收官（tag + 合 main）
 - WSL `/tmp` 目前 100% 满（opencode 的 `oc_readonly.db` 占 4 GB，用户自行处理）→ 编译
   命令加 `TMPDIR=/home/eli_peng/tmp` 前缀即可绕过
 

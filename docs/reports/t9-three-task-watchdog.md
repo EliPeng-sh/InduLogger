@@ -289,6 +289,22 @@ sequenceDiagram
 
 ---
 
+## 三·六、Step 6：队列压力注入（FAIL → 三层根因 → 四项修复 → PASS）
+
+注入：`SAMPLE_PERIOD_MS` 500→10（200 Hz 理论采样），队列(16)饱和。
+
+**暴露的三个根因（每个都有板证数字）：**
+
+| # | 故障 | 板证 | 修复 |
+|---|---|---|---|
+| 1 | **忙碌饿死**：队列满 → Logger 永不阻塞（prio 2 忙转）→ Monitor(prio 1) 零 CPU → 不喂狗 | ~26 轮 `reset cause: iwdg`，零 [mon] | **Monitor 提到优先级 4（最高）**——看门狗必须能抢占任何不让出 CPU 的任务 |
+| 2 | **IWDG 复位楔死外部芯片**：复位落在 I2C 事务中间 → BME280 从机拉死 SDA（MCU 复位清不掉外部芯片）→ 后续每次 boot 总线都是死的 | BME/MPU init failed 限频打印、无 init ok | **init 失败路径也走总线清障**（9×SCL+STOP） |
+| 3 | **每行 f_open/f_close 的锁泄漏**：_FS_LOCK=2 下写打开登记 ctr=0x100 条目，f_sync 失败（validate 查 disk_status→s_inited）→ f_close 跳过 dec_lock → 条目永久泄漏 → 之后每轮 FR_LOCKED(16) 死循环（err cnt 冻结恒 2，`re-mounted`/`append failed` 交替 ~55/s） | FR_LOCKED churn 全程录像 | **open-once**：s_fil 整个挂载期持有，行写 f_write+f_sync；卸载时 f_mount 的 clear_lock 兜底回收 |
+
+第 3 项修复后又暴露**老卡的文件系统损伤**：indulog.csv 目录链坏（FAT16 累积 6000+ 行），f_open 每轮 FR_INT_ERR(2)（ff.c:1498 dir_next 链一致性检查）——mount/读扇区正常，纯 FS 层伤，固件不可修。→ **第 4 项修复：fallback 文件** `0:indulog2.csv`（一次性切换 + 放弃态直到复位；放弃时心跳照常、qdrop 吸收样本、板子活着）。
+
+**PASS 判定（90s 窗口，10ms 压力 + 拔插卡复注）：** `open failed (2, err cnt=0) - switching to 0:indulog2.csv` 一次性切换 ✓；`append failed (1)` → `re-mounted` 各一次、**零 `(16` 行**（锁泄漏类灭绝）✓；[mon] 每 5s、qdrop 爬升、**零复位** ✓；恢复 500ms 后 sd=0 qdrop=0、readback 显示 CSV 表头 ✓。诚实注记：实测产量 ~10-15 Hz 而非理论 200 Hz（BME280 强制模式转换时间主导单次采样耗时），队列仍饱和、drop-newest 仍被持续行使，主张证据成立。
+
 ## 四、结果汇总
 
 | Step | 内容 | 状态 | 判定 |
@@ -297,8 +313,8 @@ sequenceDiagram
 | 3 | 三任务 + 队列 + 喂狗权移交布线 | ✅ | PASS（0 警告，80884 text） |
 | 4 | 流水线健康板测（[mon]/栈/堆/计数器） | ✅ | PASS（15 块 ×5s，全指标健康） |
 | 5 | 挂死注入（Logger wedge → IWDG） | ✅ | PASS（5 轮确定性复位 + 恢复零复位） |
-| 6 | 队列压力（SAMPLE_PERIOD_MS 10 → qdrop） | ⏳ | 未做（real-time 主张的落点） |
-| 7 | 代码 commit + push + CI | ⏳ | 未做 |
+| 6 | 队列压力（SAMPLE_PERIOD_MS 10 → qdrop） | ✅ | PASS（四项修复链，§三·六） |
+| 7 | 代码 commit + push + CI | ✅ | PASS（`e3a7007` feat + docs） |
 
 ## 五、方法学
 
@@ -314,6 +330,7 @@ sequenceDiagram
 
 ## 七、下一步
 
-1. **Step 6 队列压力**：`SAMPLE_PERIOD_MS` 500→10 → [mon] 显示 qdrop 每 5s 涨 ~450-500、零复位、Sensor 心跳不断 → 恢复 500 复验 → real-time 主张证据落库；
-2. **Step 7**：commit `feat(rtos): three-task pipeline + alive-mask watchdog`（工作区：app_sensors.{h,c}、app_logger.{h,c}、app_monitor.{h,c}、main.c、stats wd API、logger_format.{h,c}、config.h、host 测试×2、CMakeLists）→ push 双仓 → CI 绿；
+1. ~~**Step 6 队列压力**~~：已完成（§三·六——四项修复链 + 压力/拔插卡双验证）；
+2. ~~**Step 7**~~：已完成（`e3a7007` feat + docs，CI 验证）；
+3. **T10 示波器交叉验证** → **T11 收官**。
 3. AGENTS.md T9 行收口 → T10 示波器交叉验证 → T11 里程碑收官（tag + 合 main）。

@@ -535,7 +535,7 @@ git commit -m "feat(sdcard): SPI-SD + FATFS, pull-card and dirty-card fault-inje
 
 ### Task 9: Three-task integration — Sensor→Queue→Logger + Monitor diagnostics
 
-**Status (2026-11-16): Steps 1–5 complete on target, Step 6–7 open.** CSV formatter +
+**Status (2026-11-16): Steps 1–7 complete on target.** CSV formatter +
 alive-mask decision logic host-TDD'd RED→GREEN (7/7 suites). Three-task pipeline wired
 (sensor 512w prio3 / logger 1024w prio2 / monitor 512w prio1, sensorQ 16 deep,
 drop-newest → ERR_Q_DROP; default task reduced to LED heartbeat). Board evidence:
@@ -543,8 +543,11 @@ drop-newest → ERR_Q_DROP; default task reduced to LED heartbeat). Board eviden
 counters 0, zero resets); hung-Logger injection → **5 deterministic IWDG reset cycles
 (`reset cause: iwdg`, ~2-3 s each)** → wedge removed → healthy zero-reset run (wm
 stable, byte-level flash cmp verified firmware identity). Full report:
-`docs/reports/t9-three-task-watchdog.md`. Remaining: Step 6
-queue-overflow stress, Step 7 commit.
+`docs/reports/t9-three-task-watchdog.md`. Steps 6-7: queue stress exposed a three-layer fault chain (busy-loop
+starvation → watchdog priority 4; IWDG reset wedges external BME280 FSM →
+init-path bus-clear; _FS_LOCK=2 per-row open/close lock leak → open-once)
+plus card dir-chain corruption (FR_INT_ERR) → fallback file 0:indulog2.csv.
+Verdicts in `docs/reports/t9-three-task-watchdog.md` §三·六.
 
 **Files:**
 - Create: `stm32/app/industrial_logger/logger_format.h`, `stm32/app/industrial_logger/logger_format.c`
@@ -604,11 +607,11 @@ Serial: 2 Hz samples land in `indulog.csv` (verify by re-inserting card in PC re
 
 Temporarily wedge LoggerTask (comment its `wd_heartbeat(WD_HB_LOGGER)` call and busy-wait after the first sample) → within ~3 s the board resets itself and the console shows `reset cause: iwdg` on the auto-reboots — proof the alive-mask starves the watchdog when an app task hangs (the Task 4 default-task feed cannot catch this). Restore the heartbeat call.
 
-- [ ] **Step 6: Queue-overflow stress check (Review Focus #5)**
+- [x] **Step 6: Queue-overflow stress check (Review Focus #5)**
 
 Temporarily set `SAMPLE_PERIOD_MS 10` (logger disk latency > sample period) → expect `ERR_Q_DROP` increments in Monitor output, sensor task never blocks; restore 500.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add host stm32/app stm32/Core
