@@ -86,24 +86,26 @@ flowchart LR
 **手法（RED→GREEN，测试先行）**：
 
 ```c
-/* host/tests/test_csv_format.c —— 计划文档规定的黄金用例，逐字对照 */
+/* host/tests/test_csv_format.c —— 与实际测试文件逐字对照（2026-11-13 勘误：
+ * 早期版本此处误写了 buf[96]/写死 46 的计划草稿；黄金行实长 41 字符，
+ * 实际测试用 strlen(expect) 推导计数，永不写死） */
 void test_row_format(void)
 {
-  char buf[96];
-  /* 期望行：时间戳 + 温/湿/压 + 三轴加速度，全部 2 位小数 */
-  int n = logger_format_csv(buf, sizeof buf,
-                            1234u, 23.45f, 40.12f, 1013.25f,
-                            0.12f, -0.98f, 0.03f);
-  TEST_ASSERT_EQUAL(46, n);   /* 返回值 = 写入字符数（不含 \0） */
-  TEST_ASSERT_EQUAL_STRING(  /* 逐字节比对黄金行 */
-      "1234,23.45,40.12,1013.25,0.12,-0.98,0.03\n", buf);
+  char buf[128];
+  static const char *const expect =
+      "1234,23.45,40.12,1013.25,0.12,-0.98,0.03\n";
+  int n = logger_format_csv(buf, sizeof buf, 1234,
+                            23.45f, 40.12f, 1013.25f, 0.12f, -0.98f, 0.03f);
+  TEST_ASSERT_EQUAL_STRING(expect, buf);   /* 逐字节比对黄金行 */
+  TEST_ASSERT_EQUAL_INT((int)strlen(expect), n); /* 返回值 = 期望行长度（不含 \0），strlen 推导 */
 }
 
-void test_small_buffer_error(void)   /* 缓冲区太小必须报错，不能截断 silently */
+void test_small_buffer_reports_error(void)   /* 缓冲区太小必须报错，不能截断 silently */
 {
-  char tiny[8];
-  TEST_ASSERT_EQUAL_INT(-1, logger_format_csv(tiny, sizeof tiny,
-                                              1u, 0, 0, 0, 0, 0, 0));
+  char buf[8];
+  /* 合同是"必须报错"（任何负值），不写死 -1：静默截断会污染 CSV 列对齐 */
+  TEST_ASSERT_TRUE(logger_format_csv(buf, sizeof buf, 1,
+                                     0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f) < 0);
 }
 ```
 
