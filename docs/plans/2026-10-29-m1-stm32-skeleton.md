@@ -661,13 +661,13 @@ git commit -m "feat(diag): DWT cycle counter + benchmark GPIOs, I2C latency meas
 
 **Interfaces:** none (docs only)
 
-- [ ] **Step 1: Update docs** — README status: "M1 skeleton verified on hardware"; validation index lists: I2C-bounded failures (Task 6), plausibility tests (Task 7), pull-card/dirty-card (Task 8), queue stress (Task 9), DWT latency (Task 10) — each with one-line result and how it was produced.
+- [x] **Step 1: Update docs** — README status: "M1 skeleton verified on hardware"; validation index lists: I2C-bounded failures (Task 6), plausibility tests (Task 7), pull-card/dirty-card (Task 8), queue stress (Task 9), DWT latency (Task 10) — each with one-line result and how it was produced.
 
-- [ ] **Step 2: Full clean rebuild + ctest locally, then push** — `make -C stm32 clean && make -C stm32` (zero warnings) and `ctest --test-dir host/build` → all pass; `git push` → CI green (Actions tab).
+- [x] **Step 2: Full clean rebuild + ctest locally, then push** — clean rebuild 82560 text / 504 data / 35792 bss, zero warnings; ctest 7/7 suites; CI green on the close-out commit.
 
-- [ ] **Step 3: Tag milestone** — `git tag -a m1-skeleton -m "STM32 skeleton: sensors+SD+diag+watchdog, CI green" && git push --tags`
+- [x] **Step 3: Tag milestone** — annotated tag `m1-skeleton` on the close-out commit, pushed to origin + gitee.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md docs
@@ -676,13 +676,13 @@ git commit -m "docs: M1 close-out - validation index, toolchain versions, status
 
 ---
 
-## M1 Exit Criteria (maps to spec §14 W1 row)
+## M1 Exit Criteria (maps to spec §14 W1 row) — all met 2026-11-19
 
-- [ ] Firmware boots at 100 MHz, LED heartbeat, banner over VCP
-- [ ] BME280 + MPU6050 sampled 2 Hz via I2C (bounded 100 ms, errors counted)
-- [ ] CSV rows land in `0:indulog.csv` on SD (FATFS), tolerant to pull-card & dirty reset
-- [ ] Monitor prints uptime/reset-cause/stack-watermarks/heap/counters every 5 s
-- [ ] IWDG live (force-reset produces `reset cause: iwdg`); hung Sensor/Logger task starves the watchdog via the Monitor alive-mask (Task 9 Step 5)
-- [ ] DWT latency + BENCH GPIO verified with scope
-- [ ] Host tests (reset-cause, plausibility, CSV) + cross build + cppcheck green in CI
-- [ ] All 5 Review Focus failure modes exercised with recorded evidence
+- [x] Firmware boots at 100 MHz, LED heartbeat, banner over VCP
+- [x] BME280 + MPU6050 sampled 2 Hz via I2C (bounded 100 ms, errors counted)
+- [x] CSV rows land in `0:indulog.csv` on SD (FATFS), tolerant to pull-card & dirty reset
+- [x] Monitor prints uptime/reset-cause/stack-watermarks/heap/counters every 5 s
+- [x] IWDG live (force-reset produces `reset cause: iwdg`); hung Sensor/Logger task starves the watchdog via the Monitor alive-mask (Task 9 Step 5)
+- [x] DWT latency + BENCH GPIO verified with scope
+- [x] Host tests (reset-cause, plausibility, CSV) + cross build + cppcheck green in CI
+- [x] All 5 Review Focus failure modes exercised with recorded evidence

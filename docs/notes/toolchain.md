@@ -8,3 +8,4 @@
 - Code generation: STM32CubeIDE with embedded CubeMX **6.12.1**, STM32Cube FW_F4 **V1.28.3**; generation style: task functions + all MX_* inits inline in main.c (freertos.c = hooks only)
 - FreeRTOS: CubeIDE-bundled, CMSIS_V1 wrapper + native API in app code (raw-API option removed in CubeMX ≥6.11), heap_4 (30 KB), tick 1 kHz, `configUSE_NEWLIB_REENTRANT=1`
 - FatFs R0.12c: `_FS_TINY=0`, `_USE_LFN=2` (dynamic working buffer on the STACK), `_MAX_LFN=255`
+- M1 close (2026-11-19): firmware **82560 text / 504 data / 35792 bss**, zero warnings; host suites **7/7**; cppcheck clean (CI parity via local 2.13). Static-analysis versions: cppcheck **2.13** (runner `apt` version matches local)

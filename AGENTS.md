@@ -38,9 +38,9 @@
 | T8 | SD + FATFS：挂载/写入/回读 + 拔卡自恢复（插回 ≤4s）+ 脏卡（NRST×3 写中复位）每次重挂载，全部上板取证；发现并修复 **ST diskio `is_initialized` 缓存** bug（踩坑 14） | ✓ `815f3ca` |
 | T10 | DWT + GPIO 打点可信度：示波器 CH1（A3）实测 277µs vs DWT 277µs 偏差 0%（判据 ±10%）；校准方波先行验探链；发现并修复 diag.c 引脚映射与 .ioc 标签不一致（打点实际在 PA1，修正到 PB0/A3） | ✓ `9c5450f`+diag 修复（报告 docs/reports/t10-dwt-scope-crosscheck.md） |
 | T9 | 三任务集成：主机 TDD（7/7）+ 布线 + [mon] 板测 + 挂死注入（5 轮确定性 iwdg 复位）+ 队列压力暴露三层故障链全修复（看门狗优先级 4 / init 路径总线清障 / open-once 锁泄漏 / fallback 文件） | ✓ `e3a7007`（报告 docs/reports/t9-three-task-watchdog.md） |
-| T11 | 里程碑收官（文档 + 干净重建 + tag + 合 main） | 未开始 |
+| T11 | 里程碑收官：README 状态 + `docs/validation/README.md` 证据索引（9 主张全 ✅）+ toolchain 版本记录 + 干净重建零告警 + tag `m1-skeleton` + 合 main | ✓ 本提交 |
 
-- 下一步顺序：① T11 收官（README 状态 + validation index + 干净重建 + tag m1-skeleton + 合 main）
+- 下一步顺序：M1 收官（本提交 + tag m1-skeleton + 合 main）→ M2 草案待议
 - WSL `/tmp` 目前 100% 满（opencode 的 `oc_readonly.db` 占 4 GB，用户自行处理）→ 编译
   命令加 `TMPDIR=/home/eli_peng/tmp` 前缀即可绕过
 
@@ -171,10 +171,8 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 - 给用户的说明用中文；代码、commit message、文档正文用英文
 - 证据纪律：一个功能说"完成"前必须有板上证据（串口输出/CI 绿/测试通过）
 
-## 10. 下一步清单（T10 完成后）
+## 10. 下一步清单（T11 完成后）
 
-1. **T11 收官**：README 状态行（M1 完成）+ `docs/validation/README.md` 证据索引
-   （T6-T10 各一行）+ 干净重建（make clean && make）+ tag `m1-skeleton` +
-   合入 main；合 main 与 tag 需用户裁定
-2. M2 方向（草案待议）：ESP32-S3 协处理器 UART 链路（USART1 PA9/PA10 已在 .ioc
+1. **M1 收官收尾**：tag `m1-skeleton` + 合 main（本清单执行时同步进行）
+2. **M2 方向（草案待议）**：ESP32-S3 协处理器 UART 链路（USART1 PA9/PA10 已在 .ioc
    配置）→ 命令通道 → v2 FOTA

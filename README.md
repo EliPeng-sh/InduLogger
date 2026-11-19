@@ -11,19 +11,23 @@ could fail before it counts — see the evidence index in
 [![CI](https://github.com/EliPeng-sh/InduLogger/actions/workflows/ci.yml/badge.svg)](https://github.com/EliPeng-sh/InduLogger/actions/workflows/ci.yml)
 — host unit tests, firmware build, and static analysis on every push.
 
-## Status — milestone M1 (STM32 skeleton, in progress)
+## Status — milestone M1 (STM32 skeleton) — **complete 2026-11-19**, CI green
 
 | Area | State |
 |---|---|
 | Headless Makefile build + `make flash` (CubeProgrammer CLI), LD2 heartbeat at 100 MHz | ✅ done |
 | Debug console: `printf` over the ST-LINK VCP, boot banner | ✅ done |
 | Diagnostics: reset-cause decode (host-TDD), IWDG watchdog live, per-error counters | ✅ done |
-| BME280 (T/P/H) — bounded I²C (100 ms), calibration, error counters | code done — connected-sensor reading pending hardware |
-| MPU6050 — plausibility checks (host-TDD), last-good cache, clone-ID guard | code done — on-chip cases pending hardware |
-| DWT cycle counter + bench-GPIO instrumentation | ✅ done (I²C latency measured) |
-| SD card + FATFS (mount/write/readback, dirty-card tolerant) | next (hardware on order) |
-| Three-task pipeline (Sensor → Queue → Logger) + watchdog Monitor | planned |
+| BME280 (T/P/H): bounded I²C (100 ms), connected readings verified; pull-wire auto-recovery (GPIO bus-clear); ×2.56 pressure-compensation bug caught by Bosch-oracle host TDD | ✅ done |
+| MPU6050/MPU6500: id-compat (0x70) host-TDD + board; flat/tilt/axis-swap board evidence | ✅ done |
+| DWT + bench-GPIO instrumentation: **scope cross-check 277 µs vs 277 µs (0 % dev, ±10 % criterion)** | ✅ done |
+| SD card + FATFS: mount/write/readback, pull-card auto-remount (≤4 s), dirty-card (NRST mid-write) remount every time; ST diskio `is_initialized` cache bug found & fixed | ✅ done |
+| Three-task pipeline (Sensor → Queue → Logger) + alive-mask watchdog Monitor: hung-task → deterministic IWDG reset; 10 ms queue stress → drop-newest + zero resets (four-fix chain) | ✅ done |
 | CI: host tests + firmware build + cppcheck | ✅ green |
+
+Milestone reports (methodology + evidence per stage):
+[`docs/reports/`](docs/reports/) — T6 pressure-compensation bug, T8 ST-diskio cache
+bug, T9 three-task watchdog, T10 DWT scope cross-check.
 
 Milestone plan with per-task checkboxes (the progress ledger):
 [`docs/plans/2026-10-29-m1-stm32-skeleton.md`](docs/plans/2026-10-29-m1-stm32-skeleton.md)

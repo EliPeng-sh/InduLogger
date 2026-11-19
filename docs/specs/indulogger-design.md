@@ -13,7 +13,7 @@
 > `docs/reports/tN-*.md` 看"每个阶段怎么证明的"；`docs/plans/*.md` 是任务级执行台账
 > （checkbox 即进度）；`AGENTS.md` 是开发会话记忆。
 
-**更新**: 2026-11-19 · M1（W1–W2）进行中：T1–T10 ✓，T11 收官待做
+**更新**: 2026-11-19 · **M1（W1–W2）完成（tag `m1-skeleton`）**：T1–T11 全部 ✓，证据索引见 `docs/validation/README.md`
 
 ### M1 任务进度
 
