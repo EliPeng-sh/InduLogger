@@ -24,3 +24,7 @@ tools/*.log
 Thumbs.db
 .vscode/
 *.swp
+
+# build trees
+build/
+host/build/

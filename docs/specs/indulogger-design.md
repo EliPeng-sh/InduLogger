@@ -1,9 +1,38 @@
 # InduLogger 设计文档
 
-- **日期**: 2026-10-27（2026-10-29 修订：加入证据导向技术定位）
+- **日期**: 2026-10-27（2026-10-29 修订：加入证据导向技术定位；2026-10-30 修订：工时重定基线——M1 顺延为 W1–W2，v1 出货点 W4→W5）
 - **状态**: 已批准（含 v2 OTA 合并决策 + 三大可量测主张）
 - **作者**: Eli Peng
 - **性质**: 接案作品集旗舰项目
+
+---
+
+## 0. 实现状态（活文档节——每完成一个里程碑更新这一节）
+
+> 本文档 = 设计（§1–16）+ 实现状态（本节）。分工：**这里**看"项目是什么、到哪了"；
+> `docs/reports/tN-*.md` 看"每个阶段怎么证明的"；`docs/plans/*.md` 是任务级执行台账
+> （checkbox 即进度）；`AGENTS.md` 是开发会话记忆。
+
+**更新**: 2026-11-19 · **M1（W1–W2）完成（tag `m1-skeleton`）**：T1–T11 全部 ✓，证据索引见 `docs/validation/README.md`
+
+### M1 任务进度
+
+| 里程碑 | 验证内容（对应 §3 主张） | 证据指针 |
+|---|---|---|
+| T1–T5 ✓ | 可构建工程、板级日志、复位原因解码、IWDG、错误计数器、CI 门禁（host tests + 固件构建 + cppcheck） | `30649d0` `e8eba0b` |
+| T6 ✓ | I2C/BME280：连通读数 + 拔线容错 + 从机卡死自恢复（**可靠性**）；压力补偿 ×2.56 bug 被主机 TDD 抓住修复 | `8f17104`+`35cacfe`+`efc20c6`；报告 `docs/reports/t6-pressure-compensation-bug.md` |
+| T7 ✓ | MPU6500 id 兼容 + 三轴静态取证（平放 az=1.06g / 轴切换 1.013g） | `6aaa543`+`ff96b88` |
+| T8 ✓ | SPI-SD + FATFS：挂载/写入/回读 + 拔卡自恢复 ≤4s + 脏卡重挂载（**可靠性**）；ST diskio 缓存 bug 修复 | `815f3ca`；报告 `docs/reports/t8-st-diskio-cache-bug.md` |
+| T9 ✓ | 三任务流水线 + alive-mask 看门狗：挂死 Logger → 5 轮确定性 ~3s IWDG 复位、恢复零复位（**可靠性**）；10ms 队列压力暴露并修复四层故障链（Monitor 优先级 4 / init 路径总线清障 / open-once 锁泄漏 / fallback 文件），压力下零复位、drop-newest 生效（**即时性+可靠性**）；[mon] 5s 诊断块（**可观测性**） | `e3a7007`；报告 `docs/reports/t9-three-task-watchdog.md` |
+| T10 ✓ | DWT + GPIO 打点可信度：示波器 CH1（A3）实测 277µs vs DWT 277µs，偏差 0%（判据 ±10%）；校准方波先行验证探链，暴露并修复 diag.c 引脚映射与 .ioc 标签不一致（PA1→PB0） | `9c5450f`+diag 修复；报告 `docs/reports/t10-dwt-scope-crosscheck.md` |
+| T11 | 收官：文档 + 干净重建 + tag + 合 main | — |
+
+### 文档地图约定（2026-11-16 起）
+
+- `docs/specs/indulogger-design.md`（本文）：设计 + 实现状态节（活文档，无日期前缀）
+- `docs/reports/tN-*.md`：按里程碑命名的阶段证据报告（T6/T8/T9 已建立，此后每阶段一篇）
+- `docs/plans/*.md`：时点型计划（保留日期前缀），checkbox 即进度
+- 每完成一个阶段：写/追加报告 → 本节加/改一行 → 勾 plan → AGENTS.md → commit
 
 ---
 
@@ -28,7 +57,7 @@
 | 证据展示 | 三大主张全部有实测量化证据（示波器截图、延迟直方图、断电实测视频、浸泡测试报告、CI 绿灯） |
 | 作品集形态 | 英文 README（架构图+接线图+quickstart+「Measured, not claimed」数据表）、协议规格书、平台扩展指南、90 秒演示视频、断电实测视频 |
 | 求职效应 | 技能清单与真实职缺要求高度重合：STM32 · FreeRTOS · Bootloader · FOTA · Modbus · MQTT · BLE |
-| 时间假设 | 每周 10–15 小时，总计约 7 周（W4 出 v1 即可开始投标） |
+| 时间假设 | 每周 10–15 小时，总计约 8 周（W5 出 v1 即可开始投标；2026-10-30 按 M1 任务级工时估算重定基线） |
 
 ## 3. 技术定位：三大可量测主张
 
@@ -62,14 +91,14 @@
 
 ## 4. 范围
 
-### v1（W1–W4）——工业数据记录器
+### v1（W1–W5）——工业数据记录器
 - STM32F411 + FreeRTOS：感测取样、SD 卡记录、Modbus RTU slave
 - ESP32-S3 协处理器：WiFi + MQTT 上云、BLE 配网
 - 自订 UART 帧协定（帧格式与 OTA 指令集在本阶段定案）
 - **证据基建（从第一天埋点）**：诊断/统计模块、DWT 埋点 + benchmark GPIO、压测模式、I2C bus 恢复、协议库 PC 单元测试 + CI
 - Node-RED 仪表板演示
 
-### v2（W5–W7）——安全 FOTA
+### v2（W6–W8）——安全 FOTA
 - STM32 Bootloader + A/B 双槽 + 断电恢复 + 自动回滚
 - ESP32 侧 HTTP 韧体下载 + 串流推送
 - Node-RED 一键触发升级演示
@@ -128,7 +157,7 @@
 | USB-RS485 转接器 | $8 | Modbus 演示必备 |
 | 面包板、杜邦线 | $8 | — |
 
-### 外设分配（引脚在 W1 用 CubeMX 定案）
+### 外设分配（引脚在 W1 用 CubeIDE 内嵌的 CubeMX 定案）
 
 | 外设 | 用途 |
 |---|---|
@@ -186,7 +215,7 @@
 - **诊断/统计模块**（platform 层，一级公民）：stack watermark、heap、外设错误计数、uptime、reset-cause（RCC 旗标）、DWT 延迟统计
 - **I2C 驱动内建 bus lockup 恢复**（toggle SCL）+ 恢复计数
 - **压测模式**（配置开关）：所有任务满载运行，供最坏情况量测
-- 逻辑分层强制：`app/`（垂直场景）｜`platform/`（配置存储、日志管理、时间同步、健康监控/诊断、通讯管理）｜`middleware/`（Modbus、协议栈、FATFS）｜`drivers/`
+- 逻辑分层强制：`app/`（垂直场景）｜`platform/`（配置存储、日志管理、时间同步、健康监控/诊断、通讯管理）｜`middleware/`（Modbus、协议栈、FATFS）｜`bsp/`（板级驱动。原名 `drivers/`——与 CubeMX 的 `Drivers/` 在大小写不敏感文件系统（NTFS）上是同一个目录，2026-11-04 改名规避）
 - **协议解析器为平台无关纯 C 库**（`middleware/coproc_proto/`），可在 PC 编译跑单元测试
 - 配置不写死：装置 ID、取样率、MQTT topic、压测开关存于 Flash 配置区
 
@@ -250,19 +279,21 @@ Metadata 存版本号、影像 SHA、更新旗标、回滚计数。
 
 ## 13. 工具链
 
-**STM32CubeMX（CMake 输出）+ arm-none-eabi-gcc + CMake/Ninja + VSCode**——选择理由：CI（第 3 节主张 3 要求 GitHub Actions 每次 push 自动构建固件）必须无头构建，CubeIDE 的 IDE 工程不利于 CI；CubeMX 生成的 CMake 工程同样覆盖职缺关键词（STM32CubeMX/STM32/GCC/FreeRTOS）。OpenOCD + ST-Link 烧录（usbipd-win 通路）。ESP-IDF、Node-RED、Git/GitHub、GitHub Actions（CI：双固件构建 + 协议库单元测试 + cppcheck）、Unity（PC 端单元测试框架）。
+**repo Makefile + arm-none-eabi-gcc（apt）构建固件 + STM32CubeIDE（仅 .ioc 代码生成与图形调试）+ STM32CubeProgrammer CLI 烧录 + Unity（PC 端单元测试）+ GitHub Actions**——选择理由：本地与 CI 共用同一 Makefile（`stm32/Makefile`），构建不依赖 IDE；CubeIDE 托管构建在 WSL/UNC 工程路径下会把 `\\wsl.localhost` 绝对路径烤进 makefile 导致 make 失败（2026-11-04 实测弃用），故 CubeIDE 退居代码生成与调试；烧录经 WSL interop 直调 Windows 的 CubeProgrammer CLI（免 usbipd），OpenOCD 备用。覆盖职缺关键词（STM32/STM32CubeIDE/GCC/FreeRTOS）。ESP-IDF、Node-RED、Git/GitHub、GitHub Actions（CI：固件构建 + 协议库单元测试 + cppcheck）、Unity（PC 端单元测试框架）。可选：Gitee 作国内镜像（仅双向同步备份，CI 与 badge 仍在 GitHub Actions——目标受众在 Upwork/Fiverr，以 GitHub 为主仓）。
 
 ## 14. 里程碑
 
 | 週 | 目标 | 出货点 |
 |---|---|---|
-| W1 | CubeMX(CMake) 工程 + FreeRTOS 任务骨架 + 感测驱动 + SD 记录 + **诊断/埋点骨架（DWT、benchmark GPIO、stats 模块、reset-cause）** + CI 上线 | — |
-| W2 | Modbus RTU slave + 协议栈（STM32 端）+ **协议库 PC 单元测试 + CI 上线**；ESP32 WiFi/MQTT | — |
-| W3 | BLE 配网 + 系统整合 + Node-RED 看板 + **诊断端到端（Modbus 诊断暂存器 + diag topic）** + I2C 恢复 | — |
-| W4 | 文档打磨 + **压测模式基准量测 + 验证报告 v1** + 协议规格书、平台指南、演示视频（约多花 2–3 天，总时程不变） | ✅ v1 上架作品集，可开始投标 |
-| W5 | Bootloader + 记忆体映射 + OTA 协定（STM32 端） | — |
-| W6 | ESP32 下载串流 + Node-RED 触发 + 故障矩阵实测 + **断电酷刑测试 + 视频拍摄** + **启动 7 天浸泡测试（背景运行）** | — |
-| W7 | OTA 文档 + 测试矩阵 + 断电实测视频 + **浸泡测试报告**（若时程挤压，浸泡测试可延后发布为文件增补） | ✅ 旗舰作品完成 |
+| W1–W2 | M1 骨架（任务级计划见 `docs/plans/2026-10-29-m1-stm32-skeleton.md`）：CubeIDE 工程 + FreeRTOS 任务骨架 + 感测驱动 + SD 记录 + **诊断/埋点骨架（DWT、benchmark GPIO、stats 模块、reset-cause）** + CI 上线。估算 20–30 h，主要耗时/风险项：CubeIDE 工程生成、无头 CI 构建、SPI-SD+FATFS | — |
+| W3 | Modbus RTU slave + 协议栈（STM32 端）+ **协议库 PC 单元测试 + CI 上线**；ESP32 WiFi/MQTT | — |
+| W4 | BLE 配网 + 系统整合 + Node-RED 看板 + **诊断端到端（Modbus 诊断暂存器 + diag topic）** + I2C 恢复 | — |
+| W5 | 文档打磨 + **压测模式基准量测 + 验证报告 v1** + 协议规格书、平台指南、演示视频（约多花 2–3 天，总时程不变） | ✅ v1 上架作品集，可开始投标 |
+| W6 | Bootloader + 记忆体映射 + OTA 协定（STM32 端） | — |
+| W7 | ESP32 下载串流 + Node-RED 触发 + 故障矩阵实测 + **断电酷刑测试 + 视频拍摄** + **启动 7 天浸泡测试（背景运行）** | — |
+| W8 | OTA 文档 + 测试矩阵 + 断电实测视频 + **浸泡测试报告**（若时程挤压，浸泡测试可延后发布为文件增补） | ✅ 旗舰作品完成 |
+
+> **2026-10-30 重定基线**：M1 任务级计划落地后实测估算为 20–30 h，压不进 W1（10–15 h/周），整体顺延 1 周、v1 出货点 W4→W5。W3–W5 与 M1 存在同样的估算不确定性——每个里程碑开工前按 M1 模式先出任务级计划、重估后再定基线；若周投入超过 15 h，出货点可相应提前。
 
 ## 15. 交付物清单
 
@@ -281,7 +312,7 @@ Metadata 存版本号、影像 SHA、更新旗标、回滚计数。
 | 范围蔓延 | 严格按 v1/v2 边界；新想法记入 roadmap 不实作 |
 | 硬件相容性（模组品质） | BOM 选主流模组；到货先做单件 smoke test |
 | 协议调试耗时 | 先用 USB-TTL + PC 模拟对端（Python 脚本）单元验证，再联机 |
-| W4 后求职分心 | v1 即可投标；v2 与投标并行，时间表弹性后移 |
+| W5 后求职分心 | v1 即可投标；v2 与投标并行，时间表弹性后移 |
 | 公司 email 出现在公开 repo | 推 GitHub 前改用个人 email 的 git identity |
 | 量测数字不如预期 | 如实公布 + 说明方法；诚实可验证本身就是卖点，不造假、不挑数据 |
-| 浸泡测试占墙钟时间 | W6 特征冻结即启动背景运行；来不及就作为发布后增补文件 |
+| 浸泡测试占墙钟时间 | W7 特征冻结即启动背景运行；来不及就作为发布后增补文件 |
