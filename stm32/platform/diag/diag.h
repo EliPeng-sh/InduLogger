@@ -21,7 +21,7 @@ static inline uint32_t diag_cycles(void)
     (gpio)->BSRR = ((uint32_t)(pin) << 16); \
   } while (0)
 
-/* BENCH_GPIO1 = PA1 (Arduino A1), BENCH_GPIO2 = PB0 (Arduino A3). */
+/* BENCH_GPIO1 = PB0 (Arduino A3), BENCH_GPIO2 = PB1 (Arduino A4). */
 void diag_pulse(void);
 void diag_bench_gpio_set(int n, bool on);
 
