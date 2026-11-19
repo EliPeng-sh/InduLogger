@@ -36,11 +36,11 @@
 | T6 | I2C + BME280 驱动：连通读数（p=1002 hPa）+ 拔线容错已上板取证；压力补偿 ×2.56 bug 被 Bosch oracle 主机 TDD 抓住并修复（`bme280_compensate` 隔离层）；拔线复插不自恢复=从机 FSM 卡死（踩坑 11）→ bus-clear 已补并复注验证自恢复 | ✓ `8f17104`+`35cacfe`+`efc20c6` |
 | T7 | MPU6050 驱动 + 合理性检查：主机 TDD 全绿（2 套件）；无传感器错误路径取证；id 兼容 MPU6500（0x70，`ff96b88`）；倾斜轴切换（+X→−Y，1.013g）+ 平放（az=1.06g）+ 拔线容错全部上板取证 | ✓ `6aaa543`+`ff96b88` |
 | T8 | SD + FATFS：挂载/写入/回读 + 拔卡自恢复（插回 ≤4s）+ 脏卡（NRST×3 写中复位）每次重挂载，全部上板取证；发现并修复 **ST diskio `is_initialized` 缓存** bug（踩坑 14） | ✓ `815f3ca` |
-| **T10** | DWT + GPIO 打点基建：已实测 I2C 失败尝试 51.6 ms/次（稳定、<100ms 限界）；示波器交叉验证待仪器 | ✓（部分） |
+| T10 | DWT + GPIO 打点可信度：示波器 CH1（A3）实测 277µs vs DWT 277µs 偏差 0%（判据 ±10%）；校准方波先行验探链；发现并修复 diag.c 引脚映射与 .ioc 标签不一致（打点实际在 PA1，修正到 PB0/A3） | ✓ `9c5450f`+diag 修复（报告 docs/reports/t10-dwt-scope-crosscheck.md） |
 | T9 | 三任务集成：主机 TDD（7/7）+ 布线 + [mon] 板测 + 挂死注入（5 轮确定性 iwdg 复位）+ 队列压力暴露三层故障链全修复（看门狗优先级 4 / init 路径总线清障 / open-once 锁泄漏 / fallback 文件） | ✓ `e3a7007`（报告 docs/reports/t9-three-task-watchdog.md） |
 | T11 | 里程碑收官（文档 + 干净重建 + tag + 合 main） | 未开始 |
 
-- 下一步顺序：① T10 示波器交叉验证 → ② T11 收官（tag + 合 main）
+- 下一步顺序：① T11 收官（README 状态 + validation index + 干净重建 + tag m1-skeleton + 合 main）
 - WSL `/tmp` 目前 100% 满（opencode 的 `oc_readonly.db` 占 4 GB，用户自行处理）→ 编译
   命令加 `TMPDIR=/home/eli_peng/tmp` 前缀即可绕过
 
@@ -154,6 +154,14 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 16. **boot 横幅 `__DATE__/__TIME__` 是按编译单元固化的**：增量构建不重编 console.c
     → 横幅时间戳陈旧，**横幅时间戳单独不能当固件身份证据**；确认身份用构建尺寸
     比对 + CubeProgrammer `-u` 读回 cmp，或 `touch console.c` 后重建
+17. **代码内引脚映射与 .ioc 标签打架时以运行时代码为准**：T10 示波器探 A3（.ioc
+    BENCH_GPIO1=PB0）无波形，串口却证明打点在翻转——根因是 diag.c 把
+    `set(1,...)` 映射到 PA1（与旧注释自洽但违背 .ioc）。教训：三层（.ioc 标签 /
+    main.h 宏 / 手写代码映射）要核对一致；**"仪器探不到"的物理证据比 grep 更可靠**，
+    先板证后改码。修复后 diag.c/diag.h 与 .ioc 对齐（PB0/A3、PB1/A4）
+18. **台式机 USB 供电 + 示波器测量会耦合 50Hz 工频**：探棒长鳄鱼夹地线环路拾取
+    市磁场。对策：接地弹簧/最短地线、边沿触发+Normal、光标卡 50% 交叉点量宽度；
+    50Hz 只影响垂直轴不影响时间轴，脉宽判定不受威胁
 
 ## 9. 会话工作法（沿用既有节奏）
 
@@ -163,12 +171,10 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 - 给用户的说明用中文；代码、commit message、文档正文用英文
 - 证据纪律：一个功能说"完成"前必须有板上证据（串口输出/CI 绿/测试通过）
 
-## 10. 下一步清单（T7 完成后）
+## 10. 下一步清单（T10 完成后）
 
-1. **T9 三任务集成**：CSV formatter 先做主机 TDD（logger_format_csv，2 位小数）→
-   Sensor/Logger/Monitor 三任务 + sensorQ + alive-mask 心跳喂狗（wd_heartbeat/
-   wd_all_alive，Monitor 1s 喂狗）→ 挂死任务检查（去 Logger 心跳→~3s IWDG 复位）
-   + 队列压力（SAMPLE_PERIOD_MS 10）
-2. T10 示波器交叉验证（BENCH_GPIO1 打点 vs DWT ±10%）
-3. T11 收官：文档（README 状态、validation index 补 T7/T8 行）+ 干净重建 +
-   tag m1-skeleton + 合入 main
+1. **T11 收官**：README 状态行（M1 完成）+ `docs/validation/README.md` 证据索引
+   （T6-T10 各一行）+ 干净重建（make clean && make）+ tag `m1-skeleton` +
+   合入 main；合 main 与 tag 需用户裁定
+2. M2 方向（草案待议）：ESP32-S3 协处理器 UART 链路（USART1 PA9/PA10 已在 .ioc
+   配置）→ 命令通道 → v2 FOTA

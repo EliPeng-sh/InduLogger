@@ -620,10 +620,13 @@ git commit -m "feat(app): csv format (host-TDD), sensor->queue->logger pipeline,
 
 ### Task 10: DWT + GPIO instrumentation (evidence infra per spec §3)
 
-**Status (2026-11-06): implemented (`platform/diag/`), DWT measurement live on target:
-failed I2C attempts take 51 557 us each (stable across 11 samples, within the 100 ms
-bound; no pull-ups on the naked bus). BENCH_GPIO1 (PA1/A1) frames every attempt —
-scope cross-check (±10 %) pending an instrument.**
+**Status (2026-11-19): COMPLETE on target. Cal-wave scope self-check surfaced a real
+infra bug: `diag.c` mapped `set(1,...)` to PA1 while the `.ioc` labels BENCH_GPIO1=PB0
+— fixed to match the labels (PB0/A3, PB1/A4). Formal cross-check PASSED: DWT 277 us
+(142x277 + 18x278, <0.4% jitter) vs scope-measured 277 us on A3 = 0% deviation
+(criterion ±10%); pulse frames every BME280 read (500 ms period). Calibration wave
+(1 s high / 1 s low) used first to validate the probe chain + 50 Hz grounding lesson.
+Report: `docs/reports/t10-dwt-scope-crosscheck.md`.**
 
 **Files:**
 - Create: `stm32/platform/diag/diag.h`, `stm32/platform/diag/diag.c`
@@ -642,9 +645,7 @@ void diag_bench_gpio_set(int n, bool on);    // BENCH_GPIO1/2
 
 Measure `bme280_read` duration: `uint32_t t0=diag_cycles(); ...; uint32_t us=(diag_cycles()-t0)/100;` (100 MHz → 100 cycles/µs) printed by Monitor: `i2c read: 312 us (p50/p99 histogram deferred to M4)`.
 
-- [ ] **Step 2: Scope verification (physical)**
-
-CH1 on `BENCH_GPIO1` around an I2C transaction: visible pulse framing each read; cycle-count printed value within ±10% of scope-measured pulse width.
+- [x] **Step 2: Scope verification (physical)** — PASSED 2026-11-19: scope CH1 on A3 (PB0) reads 277 us vs DWT 277 us (0% dev, ±10% criterion); preceded by a 1s/1s calibration square wave round (probe-chain self-check) that exposed the diag.c pin-mapping bug (was driving PA1, fixed to PB0 per .ioc).
 
 - [x] **Step 3: Commit**
 

@@ -13,7 +13,7 @@
 > `docs/reports/tN-*.md` 看"每个阶段怎么证明的"；`docs/plans/*.md` 是任务级执行台账
 > （checkbox 即进度）；`AGENTS.md` 是开发会话记忆。
 
-**更新**: 2026-11-17 · M1（W1–W2）进行中：T1–T9 ✓，T10 ◐，T11 未开始
+**更新**: 2026-11-19 · M1（W1–W2）进行中：T1–T10 ✓，T11 收官待做
 
 ### M1 任务进度
 
@@ -24,7 +24,7 @@
 | T7 ✓ | MPU6500 id 兼容 + 三轴静态取证（平放 az=1.06g / 轴切换 1.013g） | `6aaa543`+`ff96b88` |
 | T8 ✓ | SPI-SD + FATFS：挂载/写入/回读 + 拔卡自恢复 ≤4s + 脏卡重挂载（**可靠性**）；ST diskio 缓存 bug 修复 | `815f3ca`；报告 `docs/reports/t8-st-diskio-cache-bug.md` |
 | T9 ✓ | 三任务流水线 + alive-mask 看门狗：挂死 Logger → 5 轮确定性 ~3s IWDG 复位、恢复零复位（**可靠性**）；10ms 队列压力暴露并修复四层故障链（Monitor 优先级 4 / init 路径总线清障 / open-once 锁泄漏 / fallback 文件），压力下零复位、drop-newest 生效（**即时性+可靠性**）；[mon] 5s 诊断块（**可观测性**） | `e3a7007`；报告 `docs/reports/t9-three-task-watchdog.md` |
-| T10 ◐ | DWT + GPIO 打点基建（I2C 失败尝试 51.6ms 实测）；示波器交叉验证待仪器 | plan T10 |
+| T10 ✓ | DWT + GPIO 打点可信度：示波器 CH1（A3）实测 277µs vs DWT 277µs，偏差 0%（判据 ±10%）；校准方波先行验证探链，暴露并修复 diag.c 引脚映射与 .ioc 标签不一致（PA1→PB0） | `9c5450f`+diag 修复；报告 `docs/reports/t10-dwt-scope-crosscheck.md` |
 | T11 | 收官：文档 + 干净重建 + tag + 合 main | — |
 
 ### 文档地图约定（2026-11-16 起）
