@@ -11,7 +11,9 @@
 
 工业数据记录器（STM32F411RE Nucleo + FreeRTOS + BME280/MPU6050 + SD/FATFS + Modbus），
 定位是给 Upwork/Fiverr 客户看的**可验证作品集项目**：有设计 spec、有计划、
-每次 push 跑 CI、每个功能在真实板子上取证后才算完成。当前执行到 **M1 骨架里程碑**。
+每次 push 跑 CI、每个功能在真实板子上取证后才算完成。
+**M1 已完成收官（tag `m1-skeleton`、合 main）；M2（ESP32-S3 通讯协处理器）方案已定案待启动**——
+交接细节见 `~/.opencode/plan/2026-11-20-InduLogger_handover_notes.md`。
 
 ## 2. 文档索引
 
@@ -171,8 +173,13 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 - 给用户的说明用中文；代码、commit message、文档正文用英文
 - 证据纪律：一个功能说"完成"前必须有板上证据（串口输出/CI 绿/测试通过）
 
-## 10. 下一步清单（T11 完成后）
+## 10. 下一步清单（M1 收官 → M2 启动）
 
-1. **M1 收官收尾**：tag `m1-skeleton` + 合 main（本清单执行时同步进行）
-2. **M2 方向（草案待议）**：ESP32-S3 协处理器 UART 链路（USART1 PA9/PA10 已在 .ioc
-   配置）→ 命令通道 → v2 FOTA
+1. **M2.1 协议库主机 TDD（零硬件，先行）**：设计稿（帧格式字节级 + ACK/重传状态机 +
+   CommTask 关系 + 测试清单）→ 用户过目 → `middleware/coproc_proto/` 纯 C 库 +
+   `host/tests/` Unity TDD → CI 绿
+2. **M2 已定案（2026-11-20）**：B 方案（UART 链路+协议栈+WiFi/MQTT+BLE 配网+Node-RED），
+   5 步拆解 M2.1–M2.5；板 = ESP32-S3-DevKitC-1-N16R8（板载 PCB 天线款）；ESP-IDF 装
+   Windows 原生（≥5.5）；ESP32 独立 USB 供电，UART 交叉 3 线（PA9/PA10+GND，3.3V 直连）。
+   完整决定 + 下一步顺序：`~/.opencode/plan/2026-11-20-InduLogger_handover_notes.md`
+3. 待核对：`.ioc` USART1 只有基础配置，M2.2 需要 IDLE+DMA 收帧时在 CubeMX 补
