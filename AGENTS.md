@@ -12,8 +12,9 @@
 工业数据记录器（STM32F411RE Nucleo + FreeRTOS + BME280/MPU6050 + SD/FATFS + Modbus），
 定位是给 Upwork/Fiverr 客户看的**可验证作品集项目**：有设计 spec、有计划、
 每次 push 跑 CI、每个功能在真实板子上取证后才算完成。
-**M1 已完成收官（tag `m1-skeleton`、合 main）；M2（ESP32-S3 通讯协处理器）方案已定案待启动**——
-交接细节见 `~/.opencode/plan/2026-11-20-InduLogger_handover_notes.md`。
+**M1 已完成收官（tag `m1-skeleton`、合 main）；M2 方案已定案，M2.1 设计稿已批准待实现；v1 范围已定方案 A 全收（2026-11-20 缺口盘点，v1 出货点顺延至 W6 初）**——
+交接细节见 `~/.opencode/plan/2026-11-20-InduLogger_handover_notes.md`，
+缺口盘点裁定见 `~/.opencode/plan/2026-11-20-InduLogger_v1_gap_audit.md`。
 
 ## 2. 文档索引
 
@@ -177,13 +178,11 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 - 给用户的说明用中文；代码、commit message、文档正文用英文
 - 证据纪律：一个功能说"完成"前必须有板上证据（串口输出/CI 绿/测试通过）
 
-## 10. 下一步清单（M1 收官 → M2 启动）
+## 10. 下一步清单（M2 启动，2026-11-20 裁定后）
 
-1. **M2.1 协议库主机 TDD（零硬件，先行）**：设计稿（帧格式字节级 + ACK/重传状态机 +
-   CommTask 关系 + 测试清单）→ 用户过目 → `middleware/coproc_proto/` 纯 C 库 +
-   `host/tests/` Unity TDD → CI 绿
-2. **M2 已定案（2026-11-20）**：B 方案（UART 链路+协议栈+WiFi/MQTT+BLE 配网+Node-RED），
-   5 步拆解 M2.1–M2.5；板 = ESP32-S3-DevKitC-1-N16R8（板载 PCB 天线款）；ESP-IDF 装
-   Windows 原生（≥5.5）；ESP32 独立 USB 供电，UART 交叉 3 线（PA9/PA10+GND，3.3V 直连）。
-   完整决定 + 下一步顺序：`~/.opencode/plan/2026-11-20-InduLogger_handover_notes.md`
-3. 待核对：`.ioc` USART1 只有基础配置，M2.2 需要 IDLE+DMA 收帧时在 CubeMX 补
+1. **M2.1 协议库主机 TDD（零硬件，计划已落）**：执行计划 `docs/plans/2026-11-20-m2-1-coproc-proto-tdd.md`（8 Task：脚手架/CRC/encode/parse/会话核心/会话鲁棒/协议规格书/收尾，测试 20 例，分支 `m2-coproc`）——按 writing-plans 流程等用户选执行方式后开工
+2. **等板窗口任务池（零 ESP32 依赖，按序）**：ADC(+DMA) → HardFault 诊断链+栈溢出钩子 → Flash 配置区 EEPROM 仿真 → RTC 基础 init；若板先到则窗口池顺延至 M2.5 后
+3. **M2.2–M2.5**：M2.2 UART 链路+CommTask（`.ioc` USART1 只有基础配置，**需补 IDLE+DMA 收帧**）→ M2.3 WiFi/MQTT（mbedTLS 注记 + TIME_SET→RTC 接线）→ M2.4 BLE 配网 → M2.5 Node-RED 看板
+4. **Modbus RTU（M2.5 后、v1 收官前）**：需提前购买 MAX485 + USB-RS485（约 $10）
+5. **v1 收官（W6 初）**：文档打磨/压测/验证报告/协议规格书/演示视频；MISRA cppcheck addon 若 CI 侧可用则随手接（本地无 addons 目录，已按裁定记录延后）；CLI 可选
+6. **协议定案参数（冻结）**：SOF=0xA5 0x5A、CRC16=CCITT-False（check=0x29B1）、停等 500ms×3 重试、HEARTBEAT 5s/15s 离线、帧总长 8+N、TIME_SET 方向=ESP32→STM32（spec §7 已修正）；黄金向量 `A5 5A 00 00 00 02 A4 82`

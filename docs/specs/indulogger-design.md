@@ -91,12 +91,13 @@
 
 ## 4. 范围
 
-### v1（W1–W5）——工业数据记录器
+### v1（W1–W6 初）——工业数据记录器
 - STM32F411 + FreeRTOS：感测取样、SD 卡记录、Modbus RTU slave
 - ESP32-S3 协处理器：WiFi + MQTT 上云、BLE 配网
 - 自订 UART 帧协定（帧格式与 OTA 指令集在本阶段定案）
 - **证据基建（从第一天埋点）**：诊断/统计模块、DWT 埋点 + benchmark GPIO、压测模式、I2C bus 恢复、协议库 PC 单元测试 + CI
 - Node-RED 仪表板演示
+- **工业底座扩展（2026-11-20 缺口盘点，方案 A 全收，v1 出货点顺延至 W6 初）**：Modbus RTU slave + 诊断寄存器（M2.5 后、v1 收官前）、RTC 墙钟时间戳（NTP→TIME_SET→RTC→CSV 闭环）、ADC 模拟量输入（电位器起步，含 DMA 多通道）、HardFault 诊断链（CFSR/HFSR/BFAR/MMFAR 解码 + NULL 函数指针注入取证）、栈溢出捕获钩子、Flash 配置区/EEPROM 仿真（双页 ping-pong，预留 v2 sector）
 
 ### v2（W6–W8）——安全 FOTA
 - STM32 Bootloader + A/B 双槽 + 断电恢复 + 自动回滚
@@ -193,7 +194,7 @@
 | MQTT_PUB / MQTT_SUB | 双向 | 云端发布/订阅透传 |
 | WIFI_CONFIG_SET/GET | STM32→ESP32 | BLE 配网流程中写入凭据 |
 | NET_STATUS | ESP32→STM32 | RSSI、IP、MQTT 连线状态 |
-| TIME_SET | STM32→ESP32 | NTP 时间同步下发 RTC |
+| TIME_SET | ESP32→STM32 | NTP 时间同步下发 RTC（2026-11-20 修正：原文写 STM32→ESP32 为方向笔误——NTP 在 ESP32 侧，由它校准 STM32 RTC） |
 | OTA_BEGIN(size, ver, sha256) | STM32→ESP32 | v2：请求下载固件 |
 | OTA_DATA(seq, chunk, crc) | ESP32→STM32 | v2：固件块串流 |
 | OTA_END / OTA_STATUS / OTA_ABORT / OTA_APPLY | 双向 | v2：校验、查询、中止、应用重启 |
@@ -213,6 +214,7 @@
 - 队列：`sensorQ`、`logQ`、`commTxQ`；共享状态用 mutex
 - IWDG 看门狗；错误计数器纳入 Modbus 诊断暂存器
 - **诊断/统计模块**（platform 层，一级公民）：stack watermark、heap、外设错误计数、uptime、reset-cause（RCC 旗标）、DWT 延迟统计
+- **异常与配置底座（2026-11-20 方案 A 增补）**：HardFault 诊断链（CFSR/HFSR/BFAR/MMFAR 解码纯 C 可主机 TDD + 板上 NULL 函数指针注入取证）+ 栈溢出捕获钩子（configCHECK_FOR_STACK_OVERFLOW=2）；RTC 时间服务（墙钟时间戳进 CSV）；Flash 配置区 EEPROM 仿真（双页 ping-pong 磨损均衡，预留 v2 sector）
 - **I2C 驱动内建 bus lockup 恢复**（toggle SCL）+ 恢复计数
 - **压测模式**（配置开关）：所有任务满载运行，供最坏情况量测
 - 逻辑分层强制：`app/`（垂直场景）｜`platform/`（配置存储、日志管理、时间同步、健康监控/诊断、通讯管理）｜`middleware/`（Modbus、协议栈、FATFS）｜`bsp/`（板级驱动。原名 `drivers/`——与 CubeMX 的 `Drivers/` 在大小写不敏感文件系统（NTFS）上是同一个目录，2026-11-04 改名规避）
@@ -288,12 +290,14 @@ Metadata 存版本号、影像 SHA、更新旗标、回滚计数。
 | W1–W2 | M1 骨架（任务级计划见 `docs/plans/2026-10-29-m1-stm32-skeleton.md`）：CubeIDE 工程 + FreeRTOS 任务骨架 + 感测驱动 + SD 记录 + **诊断/埋点骨架（DWT、benchmark GPIO、stats 模块、reset-cause）** + CI 上线。估算 20–30 h，主要耗时/风险项：CubeIDE 工程生成、无头 CI 构建、SPI-SD+FATFS | — |
 | W3 | Modbus RTU slave + 协议栈（STM32 端）+ **协议库 PC 单元测试 + CI 上线**；ESP32 WiFi/MQTT | — |
 | W4 | BLE 配网 + 系统整合 + Node-RED 看板 + **诊断端到端（Modbus 诊断暂存器 + diag topic）** + I2C 恢复 | — |
-| W5 | 文档打磨 + **压测模式基准量测 + 验证报告 v1** + 协议规格书、平台指南、演示视频（约多花 2–3 天，总时程不变） | ✅ v1 上架作品集，可开始投标 |
+| W5 | 文档打磨 + **压测模式基准量测 + 验证报告 v1** + 协议规格书、平台指南、演示视频（约多花 2–3 天，总时程不变） | ✅ v1 上架作品集，可开始投标（**顺延至 W6 初**，见下方 2026-11-20 注记） |
 | W6 | Bootloader + 记忆体映射 + OTA 协定（STM32 端） | — |
 | W7 | ESP32 下载串流 + Node-RED 触发 + 故障矩阵实测 + **断电酷刑测试 + 视频拍摄** + **启动 7 天浸泡测试（背景运行）** | — |
 | W8 | OTA 文档 + 测试矩阵 + 断电实测视频 + **浸泡测试报告**（若时程挤压，浸泡测试可延后发布为文件增补） | ✅ 旗舰作品完成 |
 
 > **2026-10-30 重定基线**：M1 任务级计划落地后实测估算为 20–30 h，压不进 W1（10–15 h/周），整体顺延 1 周、v1 出货点 W4→W5。W3–W5 与 M1 存在同样的估算不确定性——每个里程碑开工前按 M1 模式先出任务级计划、重估后再定基线；若周投入超过 15 h，出货点可相应提前。
+
+> **2026-11-20 二次修订（缺口盘点，方案 A 全收）**：ESP32 到货前 M1 复盘发现工控短板——Modbus 未排期、无墙钟时间戳、无模拟量输入、异常诊断链不完整、配置未持久化。裁定全收 6 项：Modbus 排 **M2.5 后、v1 收官前**（需前购 MAX485 + USB-RS485 约 $10）；ADC / HardFault 诊断链+栈溢出钩子 / Flash 配置区 / RTC 基础 init 进等板窗口任务池（零 ESP32 依赖）；TIME_SET 方向修正为 ESP32→STM32（§7）。**v1 出货点 W5→W6 初，v2 顺延一周（W7–W9）**。详见 `~/.opencode/plan/2026-11-20-InduLogger_v1_gap_audit.md`（会话备忘）与 M2.1 计划 `docs/plans/2026-11-20-m2-1-coproc-proto-tdd.md`。
 
 ## 15. 交付物清单
 
