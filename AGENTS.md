@@ -164,6 +164,10 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 18. **台式机 USB 供电 + 示波器测量会耦合 50Hz 工频**：探棒长鳄鱼夹地线环路拾取
     市磁场。对策：接地弹簧/最短地线、边沿触发+Normal、光标卡 50% 交叉点量宽度；
     50Hz 只影响垂直轴不影响时间轴，脉宽判定不受威胁
+19. **tag 与分支同名后，一切 push 都必须用显式 refspec**：`git push origin
+    m1-skeleton` 报 "src refspec matches more than one"（源同时命中分支和 tag）。
+    分支用 `git push origin refs/heads/m1-skeleton`，tag 用
+    `git push origin refs/tags/m1-skeleton`（M1 收官 tag 之后此坑永久存在，别想删 tag 绕开）
 
 ## 9. 会话工作法（沿用既有节奏）
 
