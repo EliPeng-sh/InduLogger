@@ -27,7 +27,7 @@ jobs:
       - name: cppcheck (hand-written code only, generated/vendor trees excluded)
         run: |
           DIRS=""
-          for d in stm32/app stm32/bsp stm32/platform host; do
+          for d in stm32/app stm32/bsp stm32/platform stm32/middleware host; do
             [ -d "$d" ] && DIRS="$DIRS $d"
           done
           cppcheck --std=c11 --platform=unix64 --enable=warning,style --error-exitcode=1 \

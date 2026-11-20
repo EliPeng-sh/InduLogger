@@ -42,7 +42,7 @@ GEN_SRC := $(wildcard Core/Src/*.c) \
 # Hand-written code (Task 6+): -Wall -Wextra
 # NOTE: the hand-written BSP layer is `bsp/` — a `drivers/` dir would collide with
 # CubeMX's `Drivers/` on case-insensitive filesystems (NTFS).
-OUR_SRC := $(wildcard app/*/*.c platform/*/*.c bsp/*/*.c)
+OUR_SRC := $(wildcard app/*/*.c platform/*/*.c bsp/*/*.c middleware/*/*.c)
 
 S_SRC   := Core/Startup/startup_stm32f411retx.s
 GEN_OBJ := $(GEN_SRC:%.c=$(BUILD)/%.o)
@@ -64,6 +64,7 @@ $(BUILD)/%.o: %.c
 $(BUILD)/app/%.o:     CFLAGS_EXTRA := -Wextra
 $(BUILD)/platform/%.o: CFLAGS_EXTRA := -Wextra
 $(BUILD)/bsp/%.o:      CFLAGS_EXTRA := -Wextra
+$(BUILD)/middleware/%.o: CFLAGS_EXTRA := -Wextra
 
 $(BUILD)/%.o: %.s
 	@mkdir -p $(dir $@)
