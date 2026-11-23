@@ -12,7 +12,7 @@
 工业数据记录器（STM32F411RE Nucleo + FreeRTOS + BME280/MPU6050 + SD/FATFS + Modbus），
 定位是给 Upwork/Fiverr 客户看的**可验证作品集项目**：有设计 spec、有计划、
 每次 push 跑 CI、每个功能在真实板子上取证后才算完成。
-**M1 已完成收官（tag `m1-skeleton`、合 main）；M2.1 协议库已实现（coproc_proto 主机 TDD 20/20 绿 + CI 绿）；v1 范围已定方案 A 全收（2026-11-20 缺口盘点，v1 出货点顺延至 W6 初）**——
+**M1 已完成收官（tag `m1-skeleton`、合 main）；M2.1 协议库已实现（coproc_proto 主机 TDD 23/23 绿 + CI 绿）；v1 范围已定方案 A 全收（2026-11-20 缺口盘点，v1 出货点顺延至 W6 初）**——
 交接细节见 `~/.opencode/plan/2026-11-20-InduLogger_handover_notes.md`，
 缺口盘点裁定见 `~/.opencode/plan/2026-11-20-InduLogger_v1_gap_audit.md`。
 
@@ -44,7 +44,7 @@
 | T10 | DWT + GPIO 打点可信度：示波器 CH1（A3）实测 277µs vs DWT 277µs 偏差 0%（判据 ±10%）；校准方波先行验探链；发现并修复 diag.c 引脚映射与 .ioc 标签不一致（打点实际在 PA1，修正到 PB0/A3） | ✓ `9c5450f`+diag 修复（报告 docs/reports/t10-dwt-scope-crosscheck.md） |
 | T9 | 三任务集成：主机 TDD（7/7）+ 布线 + [mon] 板测 + 挂死注入（5 轮确定性 iwdg 复位）+ 队列压力暴露三层故障链全修复（看门狗优先级 4 / init 路径总线清障 / open-once 锁泄漏 / fallback 文件） | ✓ `e3a7007`（报告 docs/reports/t9-three-task-watchdog.md） |
 | T11 | 里程碑收官：README 状态 + `docs/validation/README.md` 证据索引（9 主张全 ✅）+ toolchain 版本记录 + 干净重建零告警 + tag `m1-skeleton` + 合 main | ✓ 本提交 |
-| M2.1 | 协议库 coproc_proto/coproc_session 主机 TDD（20 测试）+ 构建接线 + 协议规格书 | ✓ `f7434b9..6c2429f` |
+| M2.1 | 协议库 coproc_proto/coproc_session 主机 TDD（23 测试）+ 构建接线 + 协议规格书 | ✓ `f7434b9..f604662`+终审修复 |
 
 - 下一步顺序：见 §10（M2.2 UART 链路 + 等板窗口任务池）
 - WSL `/tmp` 目前 100% 满（opencode 的 `oc_readonly.db` 占 4 GB，用户自行处理）→ 编译
@@ -172,6 +172,16 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
     m1-skeleton` 报 "src refspec matches more than one"（源同时命中分支和 tag）。
     分支用 `git push origin refs/heads/m1-skeleton`，tag 用
     `git push origin refs/tags/m1-skeleton`（M1 收官 tag 之后此坑永久存在，别想删 tag 绕开）
+20. **`uint32_t` 毫秒计数器的超时比较必须用减法**：`now_ms >= deadline_ms`（deadline 用
+    加法算）在 `now_ms` 每 49.7 天回绕一次的那个窗口内会**立即判超时**，导致提前重传、
+    4 次 tick 内 retries 耗尽 → 误报 FAULT + link 误置 DOWN（终审在
+    `cp_session_tick` 实证发现，修法 `(int32_t)(now_ms - deadline_ms) >= 0`；周期类比较
+    `now - last >= PERIOD` 天然安全）。回归测试 21 钉住：`now=0xFFFFFF00` 发帧后
+    `tick(0xFFFFFF10)` 必须无输出。凡是写"未来截止时间"的代码，一律减法比较 + 跨回绕用例
+21. **推 CI 前跑"和 CI 一字不差"的 cppcheck 命令**：M2.1 收尾首轮 CI 挂在
+    `coproc_proto.c:141 style: Variable 'hdr4' can be declared as const array`——本地此前
+    只对 `stm32/middleware` 跑了 MISRA、没跑 CI 那条 `--enable=warning,style` 的**全目录**
+    命令。教训：门禁命令要整条复制执行（含 `--error-exitcode=1` 和目录列表），不要只跑子集
 
 ## 9. 会话工作法（沿用既有节奏）
 
@@ -183,7 +193,7 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 
 ## 10. 下一步清单（M2 启动，2026-11-20 裁定后）
 
-1. **M2.1 协议库主机 TDD（零硬件，计划已落）**：执行计划 `docs/plans/2026-11-20-m2-1-coproc-proto-tdd.md`（8 Task：脚手架/CRC/encode/parse/会话核心/会话鲁棒/协议规格书/收尾，测试 20 例，分支 `m2-coproc`）—— ✅ 已完成（见 §3 M2.1 行；协议参数冻结见第 6 条；英文协议规格书 `docs/specs/coproc-protocol-spec.md`）
+1. **M2.1 协议库主机 TDD（零硬件，计划已落）**：执行计划 `docs/plans/2026-11-20-m2-1-coproc-proto-tdd.md`（8 Task：脚手架/CRC/encode/parse/会话核心/会话鲁棒/协议规格书/收尾，计划 20 例 + 终审补 3 例 = 23 例，分支 `m2-coproc`）—— ✅ 已完成（见 §3 M2.1 行；协议参数冻结见第 6 条；英文协议规格书 `docs/specs/coproc-protocol-spec.md`；终审 2 个 Important 已修：回绕安全比较 + stale-ACK 回归测试）
 2. **等板窗口任务池（零 ESP32 依赖，按序）**：ADC(+DMA) → HardFault 诊断链+栈溢出钩子 → Flash 配置区 EEPROM 仿真 → RTC 基础 init；若板先到则窗口池顺延至 M2.5 后
 3. **M2.2–M2.5**：M2.2 UART 链路+CommTask（`.ioc` USART1 只有基础配置，**需补 IDLE+DMA 收帧**）→ M2.3 WiFi/MQTT（mbedTLS 注记 + TIME_SET→RTC 接线）→ M2.4 BLE 配网 → M2.5 Node-RED 看板
 4. **Modbus RTU（M2.5 后、v1 收官前）**：需提前购买 MAX485 + USB-RS485（约 $10）

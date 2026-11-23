@@ -6,7 +6,7 @@ This document is the normative specification of the serial link protocol between
 STM32F411 logger application and the ESP32-S3 communication coprocessor. It is the
 standalone deliverable promised in the design spec §15: implementers on either side read
 this instead of reverse-engineering code. Every rule below is pinned by at least one of the
-20 host tests listed in §10.
+23 host tests listed in §10.
 
 ---
 
@@ -134,6 +134,12 @@ single recovery mechanism for bit errors.
    `DOWN`. A link failure is reported through the session counters and link state, not by
    occupying a command code.
 
+7. Every time comparison must be **wraparound-safe**: `now_ms` is a free-running `uint32_t`
+   millisecond counter that rolls over every 49.7 days. Deadlines are therefore tested with the
+   signed-difference idiom `(int32_t)(now_ms - deadline_ms) >= 0`, periods with
+   `now_ms - last_ms >= PERIOD`. A plain `now_ms >= deadline_ms` misfires once per rollover,
+   producing a premature retransmit and, after four such ticks, a spurious FAULT.
+
 **Receiver — de-duplication:**
 
 - The receiver remembers `last_good_seq` (the `SEQ` of the last frame it delivered).
@@ -147,8 +153,9 @@ single recovery mechanism for bit errors.
 
 **Heartbeat and link state:**
 
-- `HEARTBEAT` is fire-and-forget: sent by `cp_session_tick()` every 5 s when the link is idle,
-  never stored as pending, never acknowledged, not counted as a transmitted data frame.
+- `HEARTBEAT` is fire-and-forget: sent by `cp_session_tick()` every 5 s, never stored as
+  pending, never acknowledged, not counted as a transmitted data frame. A due heartbeat is
+  emitted even while a data frame awaits its ACK — the pending frame does not suppress it.
 - `last_peer_ms` is refreshed by **any** valid incoming frame, of any command.
 - If `now_ms - last_peer_ms >= 15000`, the link is marked `DOWN`; receiving any valid frame
   brings it back to `UP`. `tick()` emits at most one frame per call, retransmission taking
@@ -162,7 +169,8 @@ single recovery mechanism for bit errors.
 stateDiagram-v2
     [*] --> IDLE
     IDLE --> WAIT_ACK: cp_session_send(seq=N)
-    IDLE --> IDLE: HEARTBEAT every 5 s (no pending)
+    IDLE --> IDLE: HEARTBEAT every 5 s (fire-and-forget)
+    WAIT_ACK --> WAIT_ACK: HEARTBEAT every 5 s due, retransmit not due (pending untouched)
     WAIT_ACK --> IDLE: ACK(seq=N, OK) / tx_acked++, seq++
     WAIT_ACK --> IDLE: ACK(seq=N, ERR) / tx_rejects++, seq++, no retry
     WAIT_ACK --> WAIT_ACK: deadline, retries<3 / same seq, retries++
@@ -248,7 +256,7 @@ machine change is implied by doing so.
 
 - **Implementation:** `stm32/middleware/coproc_proto/coproc_proto.{h,c}` (frame layer),
   `coproc_session.{h,c}` (session layer).
-- **Host tests (20 cases, run by CI on every push):**
+- **Host tests (23 cases, run by CI on every push):**
   - `host/tests/test_coproc_proto.c` — tests 1–11: CRC check value, empty input, golden
     heartbeat vector, encoder, parser (whole-frame, byte-at-a-time, garbage-flanked,
     SOF-looking payload bytes, CRC corruption, oversized `LEN`, back-to-back frames).
@@ -256,5 +264,8 @@ machine change is implied by doing so.
     timing and FAULT, error-ACK immediate failure, duplicate suppression, link DOWN/UP,
     deterministic pseudo-random fuzz with resynchronisation, heartbeat scheduling, unknown-CMD
     NACK.
+  - `host/tests/test_coproc_session.c` — tests 21–23: `now_ms` wraparound across the ACK
+    deadline (no premature retransmit), stale/foreign/malformed ACK must not confirm the
+    pending frame, `SEQ` wrap 255→0 is a new frame rather than a duplicate.
 - **Design rationale and history:** `docs/specs/indulogger-design.md` §7–§8,
   `docs/plans/2026-11-20-m2-1-coproc-proto-tdd.md` (Frozen Design section).

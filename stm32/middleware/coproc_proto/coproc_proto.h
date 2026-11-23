@@ -59,7 +59,7 @@ typedef struct {
     uint16_t len;      /* claimed payload length */
     uint16_t got;      /* payload bytes received so far */
     uint8_t  payload[CP_PAYLOAD_MAX];
-} cp_parser_t;         /* ~530 B, allocate statically */
+} cp_parser_t;         /* 524 B on 32-bit, allocate statically */
 
 /* CRC-16/CCITT-False (poly 0x1021, init 0xFFFF, no reflect, xorout 0). */
 uint16_t cp_crc16(const uint8_t *data, size_t len);
