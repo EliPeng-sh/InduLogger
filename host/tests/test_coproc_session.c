@@ -142,6 +142,178 @@ static void test_send_reject_no_retry(void)
                       cp_session_tick(&s, 1600u, tbuf, sizeof(tbuf), &tn));
 }
 
+/* Build a DATA_REPORT frame via the verified encoder. */
+static size_t make_data(uint8_t *buf, size_t buf_sz, uint8_t seq,
+                        const char *pl, size_t plen)
+{
+    cp_frame_t f;
+    memset(&f, 0, sizeof(f));
+    f.seq = seq;
+    f.cmd = CP_CMD_DATA_REPORT;
+    f.len = (uint16_t)plen;
+    memcpy(f.payload, pl, plen);
+    return cp_encode(&f, buf, buf_sz);
+}
+
+/* Test 16: duplicate SEQ -> re-ACK, no delivery. */
+static void test_rx_dedup_reacks(void)
+{
+    cp_session_t s;
+    uint8_t frame[16];
+    size_t flen = make_data(frame, sizeof(frame), 5u, "xy", 2u);
+    cp_session_init(&s, 0u);
+
+    cp_frame_t out;
+    size_t consumed = 0u;
+    uint8_t ack[16];
+    size_t ack_len = 0u;
+    cp_status_t st = cp_session_feed(&s, frame, flen, 100u, &out, &consumed,
+                                     ack, sizeof(ack), &ack_len);
+    TEST_ASSERT_EQUAL(CP_OK, st);
+    TEST_ASSERT_EQUAL_HEX8(CP_CMD_DATA_REPORT, out.cmd);   /* delivered */
+    TEST_ASSERT_EQUAL_HEX8(0x05, out.seq);
+    TEST_ASSERT_EQUAL_UINT(10u, ack_len);
+    TEST_ASSERT_EQUAL_HEX8(CP_CMD_ACK, ack[5]);
+    TEST_ASSERT_EQUAL_HEX8(0x05, ack[6]);
+    TEST_ASSERT_EQUAL_HEX8(CP_ACK_OK, ack[7]);
+
+    st = cp_session_feed(&s, frame, flen, 200u, &out, &consumed,
+                         ack, sizeof(ack), &ack_len);
+    TEST_ASSERT_EQUAL(CP_OK, st);
+    TEST_ASSERT_EQUAL_HEX8(0u, out.cmd);                   /* not delivered */
+    TEST_ASSERT_EQUAL_UINT32(1u, s.rx_dup);
+    TEST_ASSERT_EQUAL_UINT(10u, ack_len);                  /* re-ACKed */
+}
+
+/* Test 17: 15 s peer silence -> link down. */
+static void test_rx_link_down_after_silence(void)
+{
+    cp_session_t s;
+    cp_session_init(&s, 0u);
+    uint8_t tbuf[32];
+    size_t tn = 0u;
+    (void)cp_session_tick(&s, 14999u, tbuf, sizeof(tbuf), &tn);
+    TEST_ASSERT_EQUAL(CP_LINK_UP, s.link);
+    (void)cp_session_tick(&s, 15000u, tbuf, sizeof(tbuf), &tn);
+    TEST_ASSERT_EQUAL(CP_LINK_DOWN, s.link);
+
+    /* any valid frame revives the link */
+    cp_frame_t out;
+    size_t consumed = 0u;
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_feed(&s, GOLDEN_HB, sizeof(GOLDEN_HB),
+                                      15100u, &out, &consumed,
+                                      NULL, 0u, NULL));
+    TEST_ASSERT_EQUAL(CP_LINK_UP, s.link);
+}
+
+/* Test 18: 1 KB pseudo-random garbage -> defined results only, then
+ * normal operation resumes. */
+static uint32_t g_xs;
+static uint8_t xorshift_byte(void)
+{
+    g_xs ^= g_xs << 13;
+    g_xs ^= g_xs >> 17;
+    g_xs ^= g_xs << 5;
+    return (uint8_t)g_xs;
+}
+
+static void test_rx_fuzz_survives(void)
+{
+    cp_session_t s;
+    cp_session_init(&s, 0u);
+    g_xs = 0x12345678u;                    /* fixed seed -> deterministic */
+
+    static uint8_t chunk[7];
+    for (size_t i = 0; i < 1024u / 7u; i++) {
+        for (size_t j = 0; j < 7u; j++) {
+            chunk[j] = xorshift_byte();
+        }
+        cp_frame_t out;
+        size_t consumed = 0u;
+        cp_status_t st = cp_session_feed(&s, chunk, sizeof(chunk), 1000u + i,
+                                         &out, &consumed, NULL, 0u, NULL);
+        TEST_ASSERT_TRUE(st == CP_OK || st == CP_ERR_NO_FRAME ||
+                         st == CP_ERR_CRC || st == CP_ERR_LEN);
+    }
+
+    /* Drain: 520 zero bytes force any phantom frame to complete and
+     * CRC-fail, deterministically resetting the parser. */
+    static uint8_t drain[520];
+    memset(drain, 0, sizeof(drain));
+    cp_frame_t out;
+    size_t consumed = 0u;
+    (void)cp_session_feed(&s, drain, sizeof(drain), 2000u, &out, &consumed,
+                          NULL, 0u, NULL);
+
+    /* golden heartbeat is consumed silently */
+    consumed = 0u;
+    cp_status_t st = cp_session_feed(&s, GOLDEN_HB, sizeof(GOLDEN_HB), 2100u,
+                                     &out, &consumed, NULL, 0u, NULL);
+    TEST_ASSERT_TRUE(st == CP_OK || st == CP_ERR_CRC);
+    TEST_ASSERT_EQUAL_HEX8(0u, out.cmd);
+
+    /* a fresh data frame is delivered normally */
+    uint8_t frame[16];
+    size_t flen = make_data(frame, sizeof(frame), 9u, "ok", 2u);
+    uint8_t ack[16];
+    size_t ack_len = 0u;
+    st = cp_session_feed(&s, frame, flen, 2200u, &out, &consumed,
+                         ack, sizeof(ack), &ack_len);
+    TEST_ASSERT_EQUAL(CP_OK, st);
+    TEST_ASSERT_EQUAL_HEX8(CP_CMD_DATA_REPORT, out.cmd);
+    TEST_ASSERT_EQUAL_UINT(10u, ack_len);
+}
+
+/* Test 19: heartbeat emission every 5 s. */
+static void test_heartbeat_periodic(void)
+{
+    cp_session_t s;
+    cp_session_init(&s, 0u);
+    uint8_t tbuf[32];
+    size_t tn = 0u;
+
+    TEST_ASSERT_EQUAL(CP_OK, cp_session_tick(&s, 5000u, tbuf, sizeof(tbuf), &tn));
+    TEST_ASSERT_EQUAL_UINT(8u, tn);        /* empty HEARTBEAT frame */
+    TEST_ASSERT_EQUAL_HEX8(CP_SOF0, tbuf[0]);
+    TEST_ASSERT_EQUAL_HEX8(CP_CMD_HEARTBEAT, tbuf[5]);
+
+    TEST_ASSERT_EQUAL(CP_ERR_NO_FRAME,
+                      cp_session_tick(&s, 9999u, tbuf, sizeof(tbuf), &tn));
+    TEST_ASSERT_EQUAL(CP_OK, cp_session_tick(&s, 10000u, tbuf, sizeof(tbuf), &tn));
+    TEST_ASSERT_EQUAL_UINT(8u, tn);
+}
+
+/* Test 20: unknown CMD with valid CRC -> NACK, not delivered. */
+static void test_rx_unknown_cmd_nacks(void)
+{
+    cp_session_t s;
+    cp_frame_t f;
+    uint8_t frame[16];
+    memset(&f, 0, sizeof(f));
+    f.seq = 3u;
+    f.cmd = 0x7Fu;                         /* not in the v1 CMD set */
+    f.len = 1u;
+    f.payload[0] = 0xAAu;
+    size_t flen = cp_encode(&f, frame, sizeof(frame));
+    TEST_ASSERT_TRUE(flen > 0u);
+
+    cp_session_init(&s, 0u);
+    cp_frame_t out;
+    size_t consumed = 0u;
+    uint8_t ack[16];
+    size_t ack_len = 0u;
+    cp_status_t st = cp_session_feed(&s, frame, flen, 100u, &out, &consumed,
+                                     ack, sizeof(ack), &ack_len);
+    TEST_ASSERT_EQUAL(CP_OK, st);
+    TEST_ASSERT_EQUAL_HEX8(0u, out.cmd);                   /* not delivered */
+    TEST_ASSERT_EQUAL_UINT32(1u, s.rx_nacks);
+    TEST_ASSERT_EQUAL_UINT(10u, ack_len);
+    TEST_ASSERT_EQUAL_HEX8(CP_CMD_ACK, ack[5]);
+    TEST_ASSERT_EQUAL_HEX8(0x03, ack[6]);                  /* acked SEQ 3 */
+    TEST_ASSERT_EQUAL_HEX8(CP_ACK_ERR_UNKNOWN_CMD, ack[7]);
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -149,5 +321,10 @@ int main(void)
     RUN_TEST(test_send_retransmit_on_deadline);
     RUN_TEST(test_send_fault_after_retry_max);
     RUN_TEST(test_send_reject_no_retry);
+    RUN_TEST(test_rx_dedup_reacks);
+    RUN_TEST(test_rx_link_down_after_silence);
+    RUN_TEST(test_rx_fuzz_survives);
+    RUN_TEST(test_heartbeat_periodic);
+    RUN_TEST(test_rx_unknown_cmd_nacks);
     return UNITY_END();
 }
