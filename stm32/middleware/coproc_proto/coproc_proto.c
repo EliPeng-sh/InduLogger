@@ -138,7 +138,7 @@ cp_status_t cp_parse(cp_parser_t *p, const uint8_t *data, size_t len,
             const uint8_t  seq = p->hdr[2];
             const uint8_t  cmd = p->hdr[3];
             const uint16_t plen = p->len;
-            uint8_t hdr4[4] = {
+            const uint8_t hdr4[4] = {
                 (uint8_t)(plen >> 8), (uint8_t)(plen & 0xFFu), seq, cmd
             };
             uint16_t calc = crc_update(crc_update(0xFFFFu, hdr4, 4u),
