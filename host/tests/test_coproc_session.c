@@ -314,6 +314,166 @@ static void test_rx_unknown_cmd_nacks(void)
     TEST_ASSERT_EQUAL_HEX8(CP_ACK_ERR_UNKNOWN_CMD, ack[7]);
 }
 
+/* Test 21: the retransmission deadline is compared wraparound-safely, so a
+ * frame sent shortly before now_ms rolls over 2^32 is NOT timed out early. */
+static void test_deadline_survives_u32_wrap(void)
+{
+    cp_session_t s;
+    uint8_t txbuf[32];
+    uint8_t tickbuf[32];
+    size_t n = 0u;
+    size_t n2 = 0u;
+
+    cp_session_init(&s, 0xFFFFFF00u);
+
+    /* deadline = 0xFFFFFF00 + 500 wraps to 0x000000F4 */
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_send(&s, CP_CMD_DATA_REPORT,
+                                      (const uint8_t *)"ab", 2u, 0xFFFFFF00u,
+                                      txbuf, sizeof(txbuf), &n));
+    TEST_ASSERT_EQUAL_UINT(10u, n);
+    TEST_ASSERT_EQUAL_UINT32(0x000000F4u, s.deadline_ms);
+
+    /* 16 ms later the deadline is still 484 ms away: nothing to emit */
+    TEST_ASSERT_EQUAL(CP_ERR_NO_FRAME,
+                      cp_session_tick(&s, 0xFFFFFF10u, tickbuf,
+                                      sizeof(tickbuf), &n2));
+    TEST_ASSERT_EQUAL_UINT(0u, n2);
+    TEST_ASSERT_EQUAL_UINT8(0u, s.retries);
+    TEST_ASSERT_EQUAL_UINT32(0u, s.tx_retries);
+
+    /* at the wrapped deadline the retransmit is due, same bytes, same SEQ */
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_tick(&s, 0x000000F4u, tickbuf,
+                                      sizeof(tickbuf), &n2));
+    TEST_ASSERT_EQUAL_UINT(10u, n2);
+    TEST_ASSERT_EQUAL_UINT8(1u, s.retries);
+    TEST_ASSERT_EQUAL_UINT32(1u, s.tx_retries);
+    TEST_ASSERT_EQUAL_MEMORY(txbuf, tickbuf, n);
+}
+
+/* Test 22: a stale, foreign or malformed ACK must never confirm the pending
+ * frame - only an ACK whose payload SEQ equals the pending SEQ does. */
+static void test_stale_ack_does_not_confirm(void)
+{
+    cp_session_t s;
+    uint8_t txbuf[32];
+    uint8_t ack[16];
+    cp_frame_t out;
+    size_t n = 0u, consumed = 0u, ack_len = 0u, alen = 0u;
+
+    cp_session_init(&s, 0u);
+
+    /* walk the TX SEQ up to 5 with five clean send/ACK rounds */
+    for (uint8_t i = 0u; i < 5u; i++) {
+        TEST_ASSERT_EQUAL(CP_OK,
+                          cp_session_send(&s, CP_CMD_DATA_REPORT,
+                                          (const uint8_t *)"q", 1u,
+                                          1000u + 100u * i,
+                                          txbuf, sizeof(txbuf), &n));
+        alen = make_ack(ack, sizeof(ack), i, CP_ACK_OK);
+        TEST_ASSERT_EQUAL(CP_OK,
+                          cp_session_feed(&s, ack, alen, 1050u + 100u * i,
+                                          &out, &consumed, NULL, 0u, &ack_len));
+    }
+    TEST_ASSERT_EQUAL_UINT8(5u, s.tx_seq);
+    TEST_ASSERT_EQUAL_UINT32(5u, s.tx_acked);
+
+    /* pending frame now carries SEQ 5 */
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_send(&s, CP_CMD_DATA_REPORT,
+                                      (const uint8_t *)"r", 1u, 1500u,
+                                      txbuf, sizeof(txbuf), &n));
+    TEST_ASSERT_EQUAL_UINT8(5u, s.pending.seq);
+    TEST_ASSERT_EQUAL_UINT8(1u, s.pending_active);
+
+    /* stale ACK for an already-acknowledged SEQ: ignored */
+    alen = make_ack(ack, sizeof(ack), 4u, CP_ACK_OK);
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_feed(&s, ack, alen, 1510u, &out, &consumed,
+                                      NULL, 0u, &ack_len));
+    TEST_ASSERT_EQUAL_UINT8(1u, s.pending_active);
+    TEST_ASSERT_EQUAL_UINT32(5u, s.tx_acked);
+    TEST_ASSERT_EQUAL_UINT8(5u, s.tx_seq);
+
+    /* ACK for a SEQ we have not reached yet: ignored */
+    alen = make_ack(ack, sizeof(ack), 6u, CP_ACK_OK);
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_feed(&s, ack, alen, 1520u, &out, &consumed,
+                                      NULL, 0u, &ack_len));
+    TEST_ASSERT_EQUAL_UINT8(1u, s.pending_active);
+    TEST_ASSERT_EQUAL_UINT32(5u, s.tx_acked);
+
+    /* an error ACK must not confirm either - matching SEQ still required */
+    alen = make_ack(ack, sizeof(ack), 4u, CP_ACK_ERR_BAD_LEN);
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_feed(&s, ack, alen, 1525u, &out, &consumed,
+                                      NULL, 0u, &ack_len));
+    TEST_ASSERT_EQUAL_UINT8(1u, s.pending_active);
+    TEST_ASSERT_EQUAL_UINT32(0u, s.tx_rejects);
+
+    /* ACK payload of the wrong length: ignored */
+    cp_frame_t bad;
+    memset(&bad, 0, sizeof(bad));
+    bad.cmd = CP_CMD_ACK;
+    bad.len = 1u;
+    bad.payload[0] = 5u;
+    alen = cp_encode(&bad, ack, sizeof(ack));
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_feed(&s, ack, alen, 1530u, &out, &consumed,
+                                      NULL, 0u, &ack_len));
+    TEST_ASSERT_EQUAL_UINT8(1u, s.pending_active);
+    TEST_ASSERT_EQUAL_UINT32(5u, s.tx_acked);
+
+    /* the matching ACK still confirms */
+    alen = make_ack(ack, sizeof(ack), 5u, CP_ACK_OK);
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_feed(&s, ack, alen, 1540u, &out, &consumed,
+                                      NULL, 0u, &ack_len));
+    TEST_ASSERT_EQUAL_UINT8(0u, s.pending_active);
+    TEST_ASSERT_EQUAL_UINT32(6u, s.tx_acked);
+    TEST_ASSERT_EQUAL_UINT8(6u, s.tx_seq);
+}
+
+/* Test 23: after the last delivered SEQ 255 the next frame uses SEQ 0 - a
+ * wrapped sequence number is a new frame, not a duplicate. */
+static void test_seq_wrap_is_not_duplicate(void)
+{
+    cp_session_t s;
+    uint8_t frame[16];
+    uint8_t ack[16];
+    cp_frame_t out;
+    size_t consumed = 0u, ack_len = 0u;
+
+    cp_session_init(&s, 0u);
+
+    size_t flen = make_data(frame, sizeof(frame), 255u, "xy", 2u);
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_feed(&s, frame, flen, 100u, &out, &consumed,
+                                      ack, sizeof(ack), &ack_len));
+    TEST_ASSERT_EQUAL_HEX8(CP_CMD_DATA_REPORT, out.cmd);
+    TEST_ASSERT_EQUAL_UINT8(255u, s.last_good_seq);
+
+    /* exact repeat of 255 -> duplicate, re-ACKed, not delivered */
+    out.cmd = 0u;
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_feed(&s, frame, flen, 110u, &out, &consumed,
+                                      ack, sizeof(ack), &ack_len));
+    TEST_ASSERT_EQUAL_HEX8(0u, out.cmd);
+    TEST_ASSERT_EQUAL_UINT32(1u, s.rx_dup);
+
+    /* wrapped SEQ 0 -> delivered */
+    size_t f0 = make_data(frame, sizeof(frame), 0u, "xy", 2u);
+    out.cmd = 0u;
+    TEST_ASSERT_EQUAL(CP_OK,
+                      cp_session_feed(&s, frame, f0, 120u, &out, &consumed,
+                                      ack, sizeof(ack), &ack_len));
+    TEST_ASSERT_EQUAL_HEX8(CP_CMD_DATA_REPORT, out.cmd);
+    TEST_ASSERT_EQUAL_UINT8(0u, out.seq);
+    TEST_ASSERT_EQUAL_UINT8(0u, s.last_good_seq);
+    TEST_ASSERT_EQUAL_UINT32(1u, s.rx_dup);       /* wrap was not counted dup */
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -326,5 +486,8 @@ int main(void)
     RUN_TEST(test_rx_fuzz_survives);
     RUN_TEST(test_heartbeat_periodic);
     RUN_TEST(test_rx_unknown_cmd_nacks);
+    RUN_TEST(test_deadline_survives_u32_wrap);
+    RUN_TEST(test_stale_ack_does_not_confirm);
+    RUN_TEST(test_seq_wrap_is_not_duplicate);
     return UNITY_END();
 }

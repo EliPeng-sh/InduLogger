@@ -112,8 +112,10 @@ cp_status_t cp_session_tick(cp_session_t *s, uint32_t now_ms,
     }
     *out_len = 0u;
 
-    /* 1. retransmit due (priority over heartbeat) */
-    if (s->pending_active && now_ms >= s->deadline_ms) {
+    /* 1. retransmit due (priority over heartbeat).
+     * Wraparound-safe: now_ms rolls over 2^32 every ~49.7 days, so the
+     * deadline is compared with signed difference, not with plain >=. */
+    if (s->pending_active && (int32_t)(now_ms - s->deadline_ms) >= 0) {
         if (s->retries < CP_RETRY_MAX) {
             s->retries++;
             s->tx_retries++;
