@@ -12,9 +12,13 @@
 工业数据记录器（STM32F411RE Nucleo + FreeRTOS + BME280/MPU6050 + SD/FATFS + Modbus），
 定位是给 Upwork/Fiverr 客户看的**可验证作品集项目**：有设计 spec、有计划、
 每次 push 跑 CI、每个功能在真实板子上取证后才算完成。
-**M1 已完成收官（tag `m1-skeleton`、合 main）；M2.1 协议库已实现（coproc_proto 主机 TDD 23/23 绿 + CI 绿）；v1 范围已定方案 A 全收（2026-11-20 缺口盘点，v1 出货点顺延至 W6 初）**——
-交接细节见 `~/.opencode/plan/2026-11-20-InduLogger_handover_notes.md`，
-缺口盘点裁定见 `~/.opencode/plan/2026-11-20-InduLogger_v1_gap_audit.md`。
+**M1 已完成收官（tag `m1-skeleton`、合 main）；M2.1 协议库已实现（coproc_proto 主机 TDD 23/23 绿 + CI 绿，
+按裁定停在分支 `m2-coproc` 未合 main）；v1 范围已定方案 A 全收（2026-11-20 缺口盘点，v1 出货点顺延至 W6 初）**。
+**ESP32-S3 已于 2026-11-23 到货 → 下一站 M2.2（UART 链路 + CommTask，首次板级取证）**。
+接手先读 `~/.opencode/plan/2026-11-23-InduLogger_M2.2_start_handover.md`（含当日实测的环境/串口/待裁定清单）；
+M2 方案定案见 `~/.opencode/plan/2026-11-20-InduLogger_handover_notes.md`，
+缺口盘点裁定见 `~/.opencode/plan/2026-11-20-InduLogger_v1_gap_audit.md`，
+M2.1 收官状态见 `~/.opencode/plan/2026-11-23-InduLogger_M2.1_done_handover.md`。
 
 ## 2. 文档索引
 
@@ -91,6 +95,18 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 - 外设：I2C1 400 kHz PB8/PB9（BME280 地址 0x76/0x77 双探测）；SPI1 慢速 390 kHz
   起步（**GUI 键名 `SPI1.BaudRatePrescaler`**——手写 `SPI1.Prescaler` 会被 CubeMX
   无视）；USART1_RX DMA2_Stream2
+- **USART1（PA9 TX / PA10 RX，115200 8N1）M2.2 现状（2026-11-23 实测）**：CubeMX 已生成
+  `hdma_usart1_rx`=DMA2_Stream2/CH4 + `__HAL_LINKDMA`（`stm32f4xx_hal_msp.c:251-266`）、
+  `USART1_IRQn`/`DMA2_Stream2_IRQn` 抢占优先级都是 **5**（msp.c:269、main.c:416）且 IT 向量已接
+  `HAL_UART_IRQHandler`/`HAL_DMA_IRQHandler`（`stm32f4xx_it.c:186,200`）——优先级 5 恰等于
+  `configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY`，所以**在 IDLE/DMA 回调里调 `...FromISR` 是合法的**；
+  应用层**从未使用** USART1（只有 init）。M2.2 真正缺的只有三件：① DMA Mode 现为
+  **`DMA_NORMAL`**（`msp.c:258`，建议 CubeMX 改 `DMA_CIRCULAR` 配 `HAL_UARTEx_ReceiveToIdle_DMA`）；
+  ② 没人调用 `ReceiveToIdle_DMA` + `HAL_UARTEx_RxEventCallback`；③ 没有 CommTask
+  （建议**优先级 2**：必须低于 monitor(4)，否则会饿死 1 s 喂 IWDG 的任务 → 看门狗复位）
+- **会话捕获脚本只抓 ST-LINK VCP**：`scripts/serial_capture.sh` 按 FriendlyName 匹配
+  `"Virtual COM Port"`，所以 CH340/CH341（ESP32 侧，名字是 `USB-SERIAL CH340`）**不会被匹配**——
+  M2.2 双端取证要给它加可选端口参数或另写一个抓 ESP 侧的脚本
 - **每次烧录后首次 boot 打印 `reset cause: iwdg` 是正常的**（烧录会话超过 2 s 喂狗
   窗口），详见 docs/notes/flash.md
 
@@ -184,6 +200,17 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
     `coproc_proto.c:141 style: Variable 'hdr4' can be declared as const array`——本地此前
     只对 `stm32/middleware` 跑了 MISRA、没跑 CI 那条 `--enable=warning,style` 的**全目录**
     命令。教训：门禁命令要整条复制执行（含 `--error-exitcode=1` 和目录列表），不要只跑子集
+22. **新硬件到货后先做身份核对再写代码**：2026-11-23 计划板是 `ESP32-S3-DevKitC-1`（桥 = CP2102，
+    VID 10C4），但 Windows 实测只枚举到 `CH340 (COM20, 1A86:7523)` 与 `CH341 (COM6, 1A86:5523)`，
+    既无 10C4 也无 303A（S3 原生 USB）。因为"桥芯片型号"直接决定 COM 号、驱动、以及
+    平替款（YD-ESP32-S3 常见 CH340）的按键/LED 脚位与 Flash/PSRAM 配置，所以在核对清板卡丝印型号
+    （方法：拔插看哪个 COM 消失）之前不要写 ESP32 侧引脚代码。同时确认是否 N16R8
+    （16MB Flash + 8MB OPI PSRAM）——`idf.py menuconfig` 不设对会按 4MB 生成分区表刷坏
+23. **"某项硬件配置待补"这类交接断言要实测复核**：AGENTS.md 旧文写"M2.2 需在 CubeMX 补 IDLE+DMA"，
+    实测发现 DMA2_Stream2/CH4、`__HAL_LINKDMA`、NVIC 优先级 5、IT 向量早在 M1 就已生成，
+    真正缺的只是应用层调用 `HAL_UARTEx_ReceiveToIdle_DMA`（因为 HAL 会自己开 IDLE 线）+ 可选把
+    DMA Mode 从 NORMAL 改 CIRCULAR。教训：接手前把上一会话的"待办断言"当假设，用 grep 现场验一遍，
+    否则会高估工作量、甚至重复配置已经配好的东西
 
 ## 9. 会话工作法（沿用既有节奏）
 
@@ -196,8 +223,16 @@ cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test
 ## 10. 下一步清单（M2 启动，2026-11-20 裁定后）
 
 1. **M2.1 协议库主机 TDD（零硬件，计划已落）**：执行计划 `docs/plans/2026-11-20-m2-1-coproc-proto-tdd.md`（8 Task：脚手架/CRC/encode/parse/会话核心/会话鲁棒/协议规格书/收尾，计划 20 例 + 终审补 3 例 = 23 例，分支 `m2-coproc`）—— ✅ 已完成（见 §3 M2.1 行；协议参数冻结见第 6 条；英文协议规格书 `docs/specs/coproc-protocol-spec.md`；终审 2 个 Important 已修：回绕安全比较 + stale-ACK 回归测试）
-2. **等板窗口任务池（零 ESP32 依赖，按序）**：ADC(+DMA) → HardFault 诊断链+栈溢出钩子 → Flash 配置区 EEPROM 仿真 → RTC 基础 init；若板先到则窗口池顺延至 M2.5 后
-3. **M2.2–M2.5**：M2.2 UART 链路+CommTask（`.ioc` USART1 只有基础配置，**需补 IDLE+DMA 收帧**）→ M2.3 WiFi/MQTT（mbedTLS 注记 + TIME_SET→RTC 接线）→ M2.4 BLE 配网 → M2.5 Node-RED 看板
+2. **等板窗口任务池（零 ESP32 依赖，按序）**：ADC(+DMA) → HardFault 诊断链+栈溢出钩子 → Flash 配置区 EEPROM 仿真 → RTC 基础 init
+   —— **2026-11-23 条件触发**：板已到货，按原裁定**整个池顺延至 M2.5 后**；但池里"RTC 基础 init"建议**提前到 M2.3 之前**做，
+   因为 `TIME_SET`(0x50) 没有 RTC 落地就只能存 RAM，取证不完整（此项待用户裁定）
+3. **M2.2–M2.5（当前主线 = M2.2）**：M2.2 UART 链路 + CommTask + ESP32 echo —— **旧说法"需补 IDLE+DMA"已修正**：
+   DMA2_Stream2/CH4、`__HAL_LINKDMA`、NVIC 优先级 5、IT 向量都由 CubeMX 生成好了（详见 §5 USART1 现状），
+   真正缺的只是 ① DMA Mode `NORMAL`→`CIRCULAR`（可选，不改则回调里 re-arm）② 应用层调用
+   `HAL_UARTEx_ReceiveToIdle_DMA` + `HAL_UARTEx_RxEventCallback` ③ CommTask（优先级 2）；
+   硬件前提：ESP-IDF（Windows 原生 ≥5.5）**2026-11-23 实测尚未安装**，且 Windows 只见 CH340(COM20)/CH341(COM6)
+   而**无 CP2102/303A** → 板身份待用户确认（见踩坑 22）→ M2.3 WiFi/MQTT（mbedTLS 注记 + TIME_SET→RTC 接线）
+   → M2.4 BLE 配网 → M2.5 Node-RED 看板
 4. **Modbus RTU（M2.5 后、v1 收官前）**：需提前购买 MAX485 + USB-RS485（约 $10）
 5. **v1 收官（W6 初）**：文档打磨/压测/验证报告/协议规格书/演示视频；MISRA cppcheck addon 已接线（M2.1 收尾：CI 新增一步只对 `stm32/middleware` 跑 `--addon=misra`，本地 0 findings；M1 legacy 目录有 44 条 `misra-config` 假报（FatFs 枚举识别不到），要在 v1 收官前补 addon 的 rule-text/config 才能扩到全仓）；CLI 可选
 6. **协议定案参数（冻结）**：SOF=0xA5 0x5A、CRC16=CCITT-False（check=0x29B1）、停等 500ms×3 重试、HEARTBEAT 5s/15s 离线、帧总长 8+N、TIME_SET 方向=ESP32→STM32（spec §7 已修正）；黄金向量 `A5 5A 00 00 00 02 A4 82`
