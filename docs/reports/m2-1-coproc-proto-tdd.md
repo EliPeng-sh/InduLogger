@@ -69,7 +69,9 @@ Reviewer verdict: *ready with fixes*, no Critical findings.
 | Out-of-order older `SEQ` would be delivered again | Declined to judge | **Ruled**: matches the frozen design ("a new SEQ → deliver"); stop-and-wait means a peer cannot reorder, so no change |
 | Heartbeat firing during an ACK wait window (behaviour itself) | Declined to judge | **Ruled**: conforms to the frozen design; only the documentation was corrected |
 
-## 5. Deviations from the plan (all ruled and recorded in the SDD ledger)
+## 5. Deviations from the plan, and the ruling log
+
+Four deviations were taken from the written plan:
 
 1. Isolation workspace = the existing `m2-coproc` branch instead of a new worktree: the
    project's serial-capture and CubeProgrammer paths are pinned to this checkout.
@@ -81,6 +83,24 @@ Reviewer verdict: *ready with fixes*, no Critical findings.
    it repo-wide needs the add-on's rule-text configuration first (tracked in `AGENTS.md` §10).
 4. Three tests (21–23) added beyond the frozen 20-case list as review regression coverage; the
    original numbering is unchanged.
+
+Every decision taken while executing the plan is reproduced below, so this report is the
+complete record. The git-ignored SDD workspace that held the working ledger
+(`.superpowers/sdd/2026-11-20-m2-1-coproc-proto-tdd/`) was deleted once the review closed.
+
+| # | Ruling | Why | Cost if wrong |
+|---|---|---|---|
+| 1 | Work on the existing `m2-coproc` branch rather than a new worktree | serial-capture (`C:\temp`) and CubeProgrammer paths are pinned to this checkout, and it is an NTFS drive | none — branch containment already isolates the work |
+| 2 | Plan Task 1 Step 1 (create the branch) skipped | the branch already existed from the documentation phase | none |
+| 3 | Task 1's completion gate = "the 2 CRC tests fail exactly as specified" + green firmware build, not a green suite | Task 1 is the RED scaffold; a green suite is impossible by design | re-gated immediately by Task 2's green run |
+| 4 | MISRA add-on wired as a CI step scoped to `stm32/middleware` | the add-on reports 44 `misra-config` false positives on M1 legacy code, outside M2.1 scope | middleware-only coverage until the add-on is configured for the whole tree |
+| 5 | Commit subject extended beyond the brief's wording | the commit also carries the `ci.yml` change | none |
+| 6 | Extra `AGENTS.md` consistency edits beyond the brief's three | a stale §3 date and branch line, §7 push refspec, §2 index rows and §10 MISRA status would mislead the next session | none |
+| 7 | Review finding I-1 accepted as a real defect (not a nit) | `uint32_t` wrap makes `now >= deadline` time out early; fixed with a signed-difference comparison, pinned by test 21 (RED observed at `test_coproc_session.c:338`, then GREEN) | none |
+| 8 | Review finding I-2 accepted as a test gap | test 22 added and proven non-vacuous by two mutations (dropping the SEQ match, dropping the `len == 2` guard) — each made it fail | none |
+| 9 | Review D-1: no runtime guard on `cp_session_send(cmd = CP_CMD_ACK)` | the frozen design defines no such check, so the library stays minimal; the contract is documented in the header instead | a caller could pend a reply frame and reach FAULT after 4 timeouts |
+| 10 | Review D-3 and D-4: behaviour kept as-is | both match the frozen design — stop-and-wait cannot reorder frames, and heartbeat timing is as specified | a future multi-outstanding transport would need explicit re-delivery rules |
+| 11 | Review D-2: SEQ wrap tested anyway (test 23) | six lines that close an untested interaction between counter wrap and de-duplication | none |
 
 ## 6. What this unlocks for M2.2
 
