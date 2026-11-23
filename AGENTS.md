@@ -50,7 +50,9 @@
 - WSL `/tmp` 目前 100% 满（opencode 的 `oc_readonly.db` 占 4 GB，用户自行处理）→ 编译
   命令加 `TMPDIR=/home/eli_peng/tmp` 前缀即可绕过
 
-分支 `m2-coproc`（M2 系列里程碑分支，自 `m1-skeleton` 切出），里程碑完成时合入 main 并打 tag。
+分支 `m2-coproc`（M2 系列里程碑分支，自 `m1-skeleton` d476d8b 切出）。
+**2026-11-23 裁定：M2.1 收官不合 main、不打 tag**（理由：M2.1 只有主机证据，板还没到），
+留到 M2 里程碑收官时一次性合入 main 并打 tag —— 别提前把未上板的协议库合进 main。
 
 ## 4. 环境与常用命令
 
