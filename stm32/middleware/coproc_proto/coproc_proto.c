@@ -31,10 +31,26 @@ uint16_t cp_crc16(const uint8_t *data, size_t len)
 
 size_t cp_encode(const cp_frame_t *f, uint8_t *buf, size_t buf_sz)
 {
-    (void)f;
-    (void)buf;
-    (void)buf_sz;
-    return 0u;
+    if (f == NULL || buf == NULL || f->len > CP_PAYLOAD_MAX) {
+        return 0u;
+    }
+    const size_t total = 6u + (size_t)f->len + 2u;
+    if (buf_sz < total) {
+        return 0u;
+    }
+    buf[0] = CP_SOF0;
+    buf[1] = CP_SOF1;
+    buf[2] = (uint8_t)(f->len >> 8);
+    buf[3] = (uint8_t)(f->len & 0xFFu);
+    buf[4] = f->seq;
+    buf[5] = f->cmd;
+    for (uint16_t i = 0; i < f->len; i++) {
+        buf[6u + i] = f->payload[i];
+    }
+    uint16_t crc = cp_crc16(&buf[2], 4u + (size_t)f->len);
+    buf[6u + f->len] = (uint8_t)(crc >> 8);
+    buf[7u + f->len] = (uint8_t)(crc & 0xFFu);
+    return total;
 }
 
 void cp_parser_init(cp_parser_t *p)
