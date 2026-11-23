@@ -33,3 +33,9 @@ jobs:
           cppcheck --std=c11 --platform=unix64 --enable=warning,style --error-exitcode=1 \
             --suppress=missingInclude --suppress=missingIncludeSystem \
             -i host/third_party -i host/build $DIRS
+      - name: cppcheck MISRA add-on (protocol library)
+        run: |
+          ADDON=$(ls /usr/lib/*/cppcheck/addons/misra.py /usr/share/cppcheck/addons/misra.py 2>/dev/null | head -1)
+          if [ -z "$ADDON" ]; then echo "::error::MISRA add-on not found in cppcheck package"; exit 1; fi
+          cppcheck --addon="$ADDON" --std=c11 --platform=unix64 --error-exitcode=1 \
+            --suppress=missingInclude --suppress=missingIncludeSystem stm32/middleware

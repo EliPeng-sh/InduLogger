@@ -85,13 +85,13 @@ The five failure modes most likely to bite the M2.2 CommTask integrator, each pi
 - Consumes: Unity at `host/third_party/unity/` (existing glob `tests/test_*.c` in `host/CMakeLists.txt`).
 - Produces: full public API of both headers (exact signatures below — every later task implements against these, verbatim).
 
-- [ ] **Step 1: Create the branch**
+- [x] **Step 1: Create the branch**
 
 ```bash
 cd /mnt/d/InduLogger && git checkout -b m2-coproc
 ```
 
-- [ ] **Step 2: Write `stm32/middleware/coproc_proto/coproc_proto.h`** (full file — final form, not a stub)
+- [x] **Step 2: Write `stm32/middleware/coproc_proto/coproc_proto.h`** (full file — final form, not a stub)
 
 ```c
 #ifndef COPROC_PROTO_H
@@ -180,7 +180,7 @@ cp_status_t cp_parse(cp_parser_t *p, const uint8_t *data, size_t len,
 #endif /* COPROC_PROTO_H */
 ```
 
-- [ ] **Step 3: Write `stm32/middleware/coproc_proto/coproc_session.h`** (full file — final form)
+- [x] **Step 3: Write `stm32/middleware/coproc_proto/coproc_session.h`** (full file — final form)
 
 ```c
 #ifndef COPROC_SESSION_H
@@ -244,7 +244,7 @@ cp_status_t cp_session_feed(cp_session_t *s, const uint8_t *data, size_t len,
 #endif /* COPROC_SESSION_H */
 ```
 
-- [ ] **Step 4: Write RED stubs `coproc_proto.c`**
+- [x] **Step 4: Write RED stubs `coproc_proto.c`**
 
 ```c
 #include "coproc_proto.h"
@@ -285,7 +285,7 @@ cp_status_t cp_parse(cp_parser_t *p, const uint8_t *data, size_t len,
 }
 ```
 
-- [ ] **Step 5: Write RED stubs `coproc_session.c`**
+- [x] **Step 5: Write RED stubs `coproc_session.c`**
 
 ```c
 #include "coproc_session.h"
@@ -335,7 +335,7 @@ cp_status_t cp_session_feed(cp_session_t *s, const uint8_t *data, size_t len,
 }
 ```
 
-- [ ] **Step 6: Write `host/tests/test_coproc_proto.c`** with CRC tests only (tests 3-11 are appended in Tasks 3-4)
+- [x] **Step 6: Write `host/tests/test_coproc_proto.c`** with CRC tests only (tests 3-11 are appended in Tasks 3-4)
 
 ```c
 #include <string.h>
@@ -374,7 +374,7 @@ int main(void)
 }
 ```
 
-- [ ] **Step 7: Wire the build.** In `host/CMakeLists.txt`: the `add_executable(...)` source list ends with `${UNITY_DIR}/unity.c)` — insert ` ../stm32/middleware/coproc_proto/coproc_proto.c ../stm32/middleware/coproc_proto/coproc_session.c` immediately before `${UNITY_DIR}/unity.c)`; the include list ends with `../stm32 ${UNITY_DIR}` — append ` ../stm32/middleware/coproc_proto`. In `stm32/Makefile`: line 45 becomes
+- [x] **Step 7: Wire the build.** In `host/CMakeLists.txt`: the `add_executable(...)` source list ends with `${UNITY_DIR}/unity.c)` — insert ` ../stm32/middleware/coproc_proto/coproc_proto.c ../stm32/middleware/coproc_proto/coproc_session.c` immediately before `${UNITY_DIR}/unity.c)`; the include list ends with `../stm32 ${UNITY_DIR}` — append ` ../stm32/middleware/coproc_proto`. In `stm32/Makefile`: line 45 becomes
 
 ```make
 OUR_SRC := $(wildcard app/*/*.c platform/*/*.c bsp/*/*.c middleware/*/*.c)
@@ -392,17 +392,17 @@ In `.github/workflows/ci.yml` line 30 the cppcheck loop becomes
           for d in stm32/app stm32/bsp stm32/platform stm32/middleware host; do
 ```
 
-- [ ] **Step 8: Run host tests — verify RED**
+- [x] **Step 8: Run host tests — verify RED**
 
 Run: `cmake -S host -B host/build -G Ninja && cmake --build host/build && ctest --test-dir host/build -R coproc_proto --output-on-failure`
 Expected: builds and links (stubs provide all symbols); both CRC tests FAIL (stub returns 0x0000).
 
-- [ ] **Step 9: Verify firmware still builds**
+- [x] **Step 9: Verify firmware still builds**
 
 Run: `TMPDIR=/home/eli_peng/tmp make -C /mnt/d/InduLogger/stm32 -j4`
 Expected: builds clean with `-Wall -Wextra` on the new middleware objects.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add stm32/middleware/coproc_proto/coproc_proto.h stm32/middleware/coproc_proto/coproc_session.h stm32/middleware/coproc_proto/coproc_proto.c stm32/middleware/coproc_proto/coproc_session.c host/tests/test_coproc_proto.c host/CMakeLists.txt stm32/Makefile .github/workflows/ci.yml
@@ -421,9 +421,9 @@ git commit -m "feat(m2.1): scaffold coproc_proto middleware, build wiring, CRC t
 - Consumes: `cp_crc16` signature from Task 1 header.
 - Produces: `cp_crc16` real behaviour — used by `cp_encode`, `cp_parse`, and a chaining helper `crc_update` (also reused by the parser in Task 4).
 
-- [ ] **Step 1: Tests already exist and fail** (Task 1 Step 8).
+- [x] **Step 1: Tests already exist and fail** (Task 1 Step 8).
 
-- [ ] **Step 2: Implement `cp_crc16`** — replace the stub in `coproc_proto.c` with:
+- [x] **Step 2: Implement `cp_crc16`** — replace the stub in `coproc_proto.c` with:
 
 ```c
 #include "coproc_proto.h"
@@ -456,12 +456,12 @@ uint16_t cp_crc16(const uint8_t *data, size_t len)
 }
 ```
 
-- [ ] **Step 3: Run host tests — verify GREEN (CRC subset)**
+- [x] **Step 3: Run host tests — verify GREEN (CRC subset)**
 
 Run: `cmake --build host/build && ctest --test-dir host/build -R coproc_proto --output-on-failure`
 Expected: `test_crc_check_vector`, `test_crc_empty_input` PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add stm32/middleware/coproc_proto/coproc_proto.c
@@ -480,7 +480,7 @@ git commit -m "feat(m2.1): implement CRC-16/CCITT-False with chaining helper (GR
 - Consumes: `cp_crc16` (Task 2), `cp_frame_t` (Task 1).
 - Produces: `cp_encode` — used by every session test (Task 5/6 ACK construction) and by CommTask (M2.2).
 
-- [ ] **Step 1: Append failing tests to `host/tests/test_coproc_proto.c`** (before `main`)
+- [x] **Step 1: Append failing tests to `host/tests/test_coproc_proto.c`** (before `main`)
 
 ```c
 /* Test 3: encode the golden heartbeat frame byte-for-byte. */
@@ -535,12 +535,12 @@ Register in `main` before `return UNITY_END();`:
     RUN_TEST(test_encode_payload_layout);
 ```
 
-- [ ] **Step 2: Run — verify RED**
+- [x] **Step 2: Run — verify RED**
 
 Run: `cmake --build host/build && ctest --test-dir host/build -R coproc_proto --output-on-failure`
 Expected: the two new tests FAIL (stub returns 0).
 
-- [ ] **Step 3: Implement `cp_encode`** — replace the stub in `coproc_proto.c`:
+- [x] **Step 3: Implement `cp_encode`** — replace the stub in `coproc_proto.c`:
 
 ```c
 size_t cp_encode(const cp_frame_t *f, uint8_t *buf, size_t buf_sz)
@@ -568,12 +568,12 @@ size_t cp_encode(const cp_frame_t *f, uint8_t *buf, size_t buf_sz)
 }
 ```
 
-- [ ] **Step 4: Run — verify GREEN**
+- [x] **Step 4: Run — verify GREEN**
 
 Run: `cmake --build host/build && ctest --test-dir host/build -R coproc_proto --output-on-failure`
 Expected: tests 1-4 all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add stm32/middleware/coproc_proto/coproc_proto.c host/tests/test_coproc_proto.c
@@ -592,7 +592,7 @@ git commit -m "feat(m2.1): frame encoder with golden-vector tests"
 - Consumes: `crc_update` (Task 2), `cp_encode` (Task 3, used to build test frames).
 - Produces: `cp_parse` contract (buffering, consumed semantics, CP_ERR_CRC / CP_ERR_LEN resets) — consumed by `cp_session_feed` in Tasks 5-6 and by CommTask RX path in M2.2.
 
-- [ ] **Step 1: Append failing tests to `host/tests/test_coproc_proto.c`**
+- [x] **Step 1: Append failing tests to `host/tests/test_coproc_proto.c`**
 
 ```c
 /* Test 5: golden frame in one shot. */
@@ -765,12 +765,12 @@ Register in `main`:
     RUN_TEST(test_parse_two_frames_back_to_back);
 ```
 
-- [ ] **Step 2: Run — verify RED**
+- [x] **Step 2: Run — verify RED**
 
 Run: `cmake --build host/build && ctest --test-dir host/build -R coproc_proto --output-on-failure`
 Expected: the seven new tests FAIL (stubs return `CP_ERR_ARG`).
 
-- [ ] **Step 3: Implement parser** — replace `cp_parser_init` and `cp_parse` stubs in `coproc_proto.c`:
+- [x] **Step 3: Implement parser** — replace `cp_parser_init` and `cp_parse` stubs in `coproc_proto.c`:
 
 ```c
 void cp_parser_init(cp_parser_t *p)
@@ -891,12 +891,12 @@ cp_status_t cp_parse(cp_parser_t *p, const uint8_t *data, size_t len,
 
 Note: `crc_update` is `static` in this file (Task 2) — the parser calls it directly.
 
-- [ ] **Step 4: Run — verify GREEN**
+- [x] **Step 4: Run — verify GREEN**
 
 Run: `cmake --build host/build && ctest --test-dir host/build -R coproc_proto --output-on-failure`
 Expected: tests 1-11 all PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add stm32/middleware/coproc_proto/coproc_proto.c host/tests/test_coproc_proto.c
@@ -915,7 +915,7 @@ git commit -m "feat(m2.1): streaming frame parser with SOF resync"
 - Consumes: `cp_encode`, `cp_parse`, `cp_frame_t`, `CP_CMD_*`, `CP_ACK_*` (Tasks 1-4).
 - Produces: full session API (final form); tests 12-15 pin the sender state machine.
 
-- [ ] **Step 1: Write `host/tests/test_coproc_session.c`** with tests 12-15 (tests 16-20 appended in Task 6)
+- [x] **Step 1: Write `host/tests/test_coproc_session.c`** with tests 12-15 (tests 16-20 appended in Task 6)
 
 ```c
 #include <string.h>
@@ -1073,12 +1073,12 @@ int main(void)
 }
 ```
 
-- [ ] **Step 2: Run — verify RED**
+- [x] **Step 2: Run — verify RED**
 
 Run: `cmake --build host/build && ctest --test-dir host/build -R coproc_session --output-on-failure`
 Expected: builds and links; the four session tests FAIL (stubs return `CP_ERR_ARG`).
 
-- [ ] **Step 3: Implement the full session layer** — replace all stubs in `coproc_session.c`:
+- [x] **Step 3: Implement the full session layer** — replace all stubs in `coproc_session.c`:
 
 ```c
 #include "coproc_session.h"
@@ -1306,12 +1306,12 @@ cp_status_t cp_session_feed(cp_session_t *s, const uint8_t *data, size_t len,
 }
 ```
 
-- [ ] **Step 4: Run — verify GREEN (session subset)**
+- [x] **Step 4: Run — verify GREEN (session subset)**
 
 Run: `cmake --build host/build && ctest --test-dir host/build -R coproc_session --output-on-failure`
 Expected: tests 12-15 PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add stm32/middleware/coproc_proto/coproc_session.c host/tests/test_coproc_session.c
@@ -1329,7 +1329,7 @@ git commit -m "feat(m2.1): stop-and-wait session core (send/ACK/retransmit/fault
 - Consumes: full session API (Task 5), `cp_encode` (Task 3).
 - Produces: pinned evidence for the receiver path and link supervision — the behaviours M2.2's CommTask relies on for its health/diag reporting.
 
-- [ ] **Step 1: Append failing tests** (before `main` in `host/tests/test_coproc_session.c`)
+- [x] **Step 1: Append failing tests** (before `main` in `host/tests/test_coproc_session.c`)
 
 ```c
 /* Build a DATA_REPORT frame via the verified encoder. */
@@ -1515,17 +1515,17 @@ Register in `main` before `return UNITY_END();`:
     RUN_TEST(test_rx_unknown_cmd_nacks);
 ```
 
-- [ ] **Step 2: Run — verify RED, then GREEN**
+- [x] **Step 2: Run — verify RED, then GREEN**
 
 Run: `cmake --build host/build && ctest --test-dir host/build -R coproc_session --output-on-failure`
 Expected: Task 5 already implemented the behaviours these tests exercise, so they are expected to pass immediately; if any FAILS, fix `coproc_session.c` (a real bug caught) and re-run. Final state: tests 12-20 all PASS.
 
-- [ ] **Step 3: Run the whole host suite and the firmware build**
+- [x] **Step 3: Run the whole host suite and the firmware build**
 
 Run: `ctest --test-dir host/build --output-on-failure && TMPDIR=/home/eli_peng/tmp make -C /mnt/d/InduLogger/stm32 -j4`
 Expected: all suites green (including pre-existing M1 tests); firmware builds clean.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add host/tests/test_coproc_session.c stm32/middleware/coproc_proto/coproc_session.c
@@ -1543,7 +1543,7 @@ git commit -m "feat(m2.1): session robustness (dedup, NACK, heartbeat, link, fuz
 - Consumes: the frozen design section of this plan (single source of truth).
 - Produces: the portfolio deliverable promised in spec §15 item "独立协议规格书（英文）"; M2.2+ implementers and the ESP32-side team read this instead of reverse-engineering code.
 
-- [ ] **Step 1: Write the document** with exactly these sections (content = the Frozen Design section above, re-expressed as a standalone spec; do not invent new rules):
+- [x] **Step 1: Write the document** with exactly these sections (content = the Frozen Design section above, re-expressed as a standalone spec; do not invent new rules):
 
 1. **Overview** — purpose (STM32↔ESP32-S3 UART link), byte-oriented, big-endian, library location `stm32/middleware/coproc_proto/` (same sources on both sides).
 2. **Frame format** — offset table (SOF0/SOF1/LEN_H/LEN_L/SEQ/CMD/PAYLOAD/CRC_H/CRC_L), LEN 0..512, total length 8+N, `CP_FRAME_MAX 520`.
@@ -1556,12 +1556,12 @@ git commit -m "feat(m2.1): session robustness (dedup, NACK, heartbeat, link, fuz
 9. **Tunables** — the five `CP_*` constants with defaults and the note that M2.2 may retune values without structural changes.
 10. **Reference** — implementation `stm32/middleware/coproc_proto/`, host tests `host/tests/test_coproc_proto.c` / `test_coproc_session.c` (20 tests, golden vectors).
 
-- [ ] **Step 2: Self-check the spec against the library**
+- [x] **Step 2: Self-check the spec against the library**
 
 Run: `grep -n "0x29B1\|A4 82\|A482" docs/specs/coproc-protocol-spec.md && ctest --test-dir host/build -R coproc --output-on-failure`
 Expected: golden vectors present; all 20 tests still green (spec claims match tested behaviour).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/specs/coproc-protocol-spec.md
@@ -1580,7 +1580,7 @@ git commit -m "docs(m2.1): coprocessor protocol specification (deliverable)"
 - Consumes: everything above, green.
 - Produces: pushed branch with CI green; AGENTS.md reflects M2.1 done.
 
-- [ ] **Step 1: Optional MISRA addon check** (user ruling: wire it if available, otherwise the deferral already recorded in AGENTS.md §10 stands)
+- [x] **Step 1: Optional MISRA addon check** (user ruling: wire it if available, otherwise the deferral already recorded in AGENTS.md §10 stands)
 
 ```bash
 find /home/eli_peng -name "misra*.py" -o -name "misra.c" 2>/dev/null | grep -i cppcheck | head -5
@@ -1588,19 +1588,19 @@ find /home/eli_peng -name "misra*.py" -o -name "misra.c" 2>/dev/null | grep -i c
 
 If a cppcheck addon directory exists: wire `--addon=misra` into the ci.yml cppcheck step and fix any reported findings in the new middleware files. If not: do nothing here (AGENTS.md §10 item 5 already records the deferral).
 
-- [ ] **Step 2: Update AGENTS.md** — three precise edits:
+- [x] **Step 2: Update AGENTS.md** — three precise edits:
   - §1 status line becomes: `**M1 已完成收官（tag m1-skeleton、合 main）；M2.1 协议库已实现（coproc_proto 主机 TDD 20/20 绿 + CI 绿）；v1 范围已定方案 A 全收（2026-11-20 缺口盘点，v1 出货点顺延至 W6 初）**`
   - §3 progress table gains a row: `| M2.1 | 协议库 coproc_proto/coproc_session 主机 TDD（20 测试）+ 构建接线 + 协议规格书 | ✓ <commit-of-task-6> |`
   - §10 item 1 gets the suffix `—— ✅ 已完成（见 §3 M2.1 行；协议参数冻结见第 6 条）`
 
-- [ ] **Step 3: Tick every checkbox in this plan file** (`- [ ]` → `- [x]`), commit
+- [x] **Step 3: Tick every checkbox in this plan file** (`- [ ]` → `- [x]`), commit
 
 ```bash
 git add AGENTS.md docs/plans/2026-11-20-m2-1-coproc-proto-tdd.md
 git commit -m "chore(m2.1): closure - AGENTS update, plan checkboxes ticked"
 ```
 
-- [ ] **Step 4: Push both remotes and verify CI**
+- [x] **Step 4: Push both remotes and verify CI**
 
 ```bash
 git push origin refs/heads/m2-coproc && git push gitee refs/heads/m2-coproc
@@ -1609,4 +1609,4 @@ curl -s https://api.github.com/repos/EliPeng-sh/InduLogger/actions/runs?per_page
 
 Expected: push succeeds (retry on transient GitHub errors, do not change config); the latest run is for `m2-coproc`; poll the `conclusion` field until it is `success` (three jobs: host-tests, firmware-build, static-analysis). If `static-analysis` flags anything in the new middleware sources, fix and re-push.
 
-- [ ] **Step 5: Report** — summarize commits, test count, CI conclusion to the user (in Chinese).
+- [x] **Step 5: Report** — summarize commits, test count, CI conclusion to the user (in Chinese).
