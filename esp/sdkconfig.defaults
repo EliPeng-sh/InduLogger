@@ -1,0 +1,8 @@
+# Board facts (measured 2026-11-23, silkscreen ESP32-S3 V1.4, module N16R8):
+# 16 MB flash + 8 MB OPI PSRAM. Wrong FLASHSIZE would build a 4MB partition table.
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_SPIRAM=y
+# IDF v6 renamed MODE_OPI -> MODE_OCT; unknown keys in defaults are silently ignored
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
