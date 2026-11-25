@@ -1,0 +1,8 @@
+# M2.2a loopback self-test build: full copy of sdkconfig.defaults + demo PING source.
+# Use: idf.ps1 -DSDKCONFIG_DEFAULTS=sdkconfig.loopback.defaults build  (after rm sdkconfig)
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_COPROC_LOOPBACK_DEMO=y

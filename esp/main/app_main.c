@@ -8,6 +8,8 @@
 #include "esp_idf_version.h"
 #include "esp_log.h"
 
+#include "link_task.h"
+
 static const char *TAG = "main";
 
 void app_main(void)
@@ -26,6 +28,8 @@ void app_main(void)
 
     size_t psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
     ESP_LOGI(TAG, "psram: %u KB total", (unsigned)(psram / 1024));
+
+    link_task_start();
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(5000));

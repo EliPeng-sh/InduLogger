@@ -1,0 +1,17 @@
+menu "InduLogger M2.2 demo switches"
+
+    config COPROC_SUPPRESS_ACK
+        bool "Never transmit ACK frames (acceptance #4: force retransmit/fault chain)"
+        default n
+        help
+            Link still RX-parses and the session still generates ACKs;
+            this build simply drops them on the wire so the STM32 side
+            must show retry x3 -> fault -> link DOWN.
+
+    config COPROC_LOOPBACK_DEMO
+        bool "Send a PING every 2 s (GPIO11->GPIO12 loopback self-test)"
+        default n
+        help
+            For M2.2a hardware self-test only, no STM32 involved.
+
+endmenu
