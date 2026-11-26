@@ -16,7 +16,10 @@
 #include "link_task.h"
 
 #define LINK_UART        UART_NUM_1
-#define LINK_UART_TX_GPIO GPIO_NUM_11
+/* Hole-11 marginal contact (rounds 4-8: route lives ~1-2 min after each
+ * reseat then dies; wire bodies x3, PA10 hole, GPIO11 pad all proven good).
+ * Test/adopt: TX moved to GPIO13. */
+#define LINK_UART_TX_GPIO GPIO_NUM_13
 #define LINK_UART_RX_GPIO GPIO_NUM_12
 #define LINK_RX_Q_SIZE   256          /* bytes buffered per pull */
 #define LINK_TICK_MS     50u           /* session tick period */
