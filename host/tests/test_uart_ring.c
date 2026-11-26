@@ -4,7 +4,7 @@
 
 #include "unity.h"
 
-#include "uart_ring.h"
+#include "bsp/uart_ring/uart_ring.h"
 #include "coproc_proto.h"
 
 #define RING_SIZE 1024u

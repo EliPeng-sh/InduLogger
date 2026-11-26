@@ -27,6 +27,7 @@
 #include "app/industrial_logger/app_logger.h"
 #include "app/industrial_logger/app_monitor.h"
 #include "app/industrial_logger/app_sensors.h"
+#include "bsp/uart_link/uart_link.h"
 #include "platform/config/config.h"
 #include "platform/console/console.h"
 #include "platform/diag/diag.h"
@@ -130,6 +131,7 @@ int main(void)
   diag_dwt_init(); /* DWT cycle counter + bench GPIOs (T10) */
   console_init(); /* banner + printf retarget over ST-LINK VCP */
   printf("reset cause: %s\r\n", reset_cause_name(stats_boot_cause()));
+  uart_link_init(); /* USART1 IDLE-line DMA receiver (M2.2, Task 5) */
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
