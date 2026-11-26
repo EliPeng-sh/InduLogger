@@ -128,9 +128,11 @@ void app_comm_task(void *arg)
                               COMM_TX_TIMEOUT);
         }
 
-        /* 4. Console trigger: 'p' on ST-LINK VCP sends one demo PING. */
+        /* 4. Console trigger: 'p' on ST-LINK VCP sends one demo PING.
+         * NOTE: HAL_UART_Receive returns HAL_OK on success — the plan's
+         * '== 1' was wrong (1 == HAL_ERROR), caught by board test. */
         uint8_t c;
-        if (HAL_UART_Receive(&huart2, &c, 1, 0) == 1 && c == 'p') {
+        if (HAL_UART_Receive(&huart2, &c, 1, 0) == HAL_OK && c == 'p') {
             (void)app_comm_send(CP_CMD_PING, (const uint8_t *)"abc", 3);
         }
 
