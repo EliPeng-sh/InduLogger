@@ -22,6 +22,36 @@ static uint8_t s_ring_buf[UART_LINK_RING_SIZE];
 static uart_ring_t s_ring;
 static QueueHandle_t s_wr_q;
 static volatile uint32_t s_ev_drop;
+static volatile bool s_rearm_req;
+static volatile uint32_t s_rearm_count;
+
+/* HAL treats ANY error (FE/NE/ORE) during DMA reception as blocking and
+ * aborts the Rx transfer (stm32f4xx_hal_uart.c:2416-2438). A glitch on the
+ * line while the peer resets is therefore permanently deaf without this
+ * recovery: flag here (ISR-safe), re-arm in task context below. */
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1) {
+        s_rearm_req = true;
+    }
+}
+
+static void uart_link_rearm_if_needed(void)
+{
+    if (!s_rearm_req) {
+        return;
+    }
+    s_rearm_req = false;
+    /* DMA restarts at offset 0: resync reader, drop stale event offsets. */
+    s_ring.rd = 0;
+    xQueueReset(s_wr_q);
+    if (HAL_UARTEx_ReceiveToIdle_DMA(&huart1, s_ring_buf,
+                                     UART_LINK_RING_SIZE) == HAL_OK) {
+        s_rearm_count++;
+    } else {
+        s_rearm_req = true; /* RxState not READY yet; retry next call */
+    }
+}
 
 void uart_link_init(void)
 {
@@ -58,6 +88,7 @@ size_t uart_link_read(uint8_t *dst, size_t max, bool *overrun)
     bool ov = false;
     uint16_t wr;
 
+    uart_link_rearm_if_needed();
     *overrun = false;
     if (s_wr_q == NULL) {
         return 0;
@@ -76,4 +107,9 @@ size_t uart_link_read(uint8_t *dst, size_t max, bool *overrun)
 uint32_t uart_link_ev_drop(void)
 {
     return s_ev_drop;
+}
+
+uint32_t uart_link_rearm_count(void)
+{
+    return s_rearm_count;
 }

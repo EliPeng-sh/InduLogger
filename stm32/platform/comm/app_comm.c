@@ -149,7 +149,7 @@ void app_comm_task(void *arg)
         if ((int32_t)(now - next_stat) >= 0) {
             next_stat = now + COMM_STAT_MS;
             printf("[comm] tx=%lu acked=%lu retry=%lu fault=%lu rx=%lu "
-                   "dup=%lu crc=%lu orr=%lu evd=%lu\r\n",
+                   "dup=%lu crc=%lu orr=%lu evd=%lu rmm=%lu\r\n",
                    (unsigned long)s_sess.tx_frames,
                    (unsigned long)s_sess.tx_acked,
                    (unsigned long)s_sess.tx_retries,
@@ -158,7 +158,8 @@ void app_comm_task(void *arg)
                    (unsigned long)s_sess.rx_dup,
                    (unsigned long)s_sess.rx_crc_err,
                    (unsigned long)s_orr,
-                   (unsigned long)uart_link_ev_drop());
+                   (unsigned long)uart_link_ev_drop(),
+                   (unsigned long)uart_link_rearm_count());
         }
     }
 }

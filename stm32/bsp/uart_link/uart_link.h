@@ -15,5 +15,6 @@
 void     uart_link_init(void);   /* create queue + arm ReceiveToIdle_DMA once */
 size_t   uart_link_read(uint8_t *dst, size_t max, bool *overrun);
 uint32_t uart_link_ev_drop(void); /* events lost to a full queue (ISR side) */
+uint32_t uart_link_rearm_count(void); /* RX DMA re-arms after HAL abort-on-error */
 
 #endif /* UART_LINK_H */
