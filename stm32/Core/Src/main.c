@@ -28,6 +28,7 @@
 #include "app/industrial_logger/app_monitor.h"
 #include "app/industrial_logger/app_sensors.h"
 #include "bsp/uart_link/uart_link.h"
+#include "platform/comm/app_comm.h"
 #include "platform/config/config.h"
 #include "platform/console/console.h"
 #include "platform/diag/diag.h"
@@ -68,6 +69,7 @@ QueueHandle_t sensorQ;
 TaskHandle_t sensorTaskHandle;
 TaskHandle_t loggerTaskHandle;
 TaskHandle_t monitorTaskHandle;
+TaskHandle_t commTaskHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -174,6 +176,10 @@ int main(void)
    * than the period never blocks = never yields) starves every lower-prio
    * task, watchdog included. The watchdog must preempt. */
   xTaskCreate(app_monitor_task, "monitor", 512, NULL, 4, &monitorTaskHandle);
+  /* CommTask = M2.2 UART link driver. Prio 2: MUST stay below monitor (4)
+   * so it can never starve the 1 s IWDG feed (T9 discipline); above the
+   * logger (1) so link traffic outranks flash writes. */
+  xTaskCreate(app_comm_task, "comm", 1024, NULL, 2, &commTaskHandle);
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */

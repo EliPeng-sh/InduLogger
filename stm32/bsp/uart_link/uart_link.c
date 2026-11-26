@@ -33,6 +33,9 @@ void uart_link_init(void)
     HAL_UARTEx_ReceiveToIdle_DMA(&huart1, s_ring_buf, UART_LINK_RING_SIZE);
 }
 
+/* Signature fixed by HAL (weak symbol in stm32f4xx_hal_uart.h): the
+ * huart parameter cannot be made const here; cppcheck is suppressed
+ * for this file in ci.yml. */
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
     (void)Size; /* offset comes from the hardware counter, not HAL's Size */

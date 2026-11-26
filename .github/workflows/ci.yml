@@ -32,6 +32,7 @@ jobs:
           done
           cppcheck --std=c11 --platform=unix64 --enable=warning,style --error-exitcode=1 \
             --suppress=missingInclude --suppress=missingIncludeSystem \
+            --suppress=constParameterPointer:stm32/bsp/uart_link/uart_link.c \
             -i host/third_party -i host/build $DIRS
       - name: cppcheck MISRA add-on (protocol library)
         run: |
