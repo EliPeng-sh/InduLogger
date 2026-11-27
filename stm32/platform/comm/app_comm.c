@@ -24,7 +24,7 @@ extern UART_HandleTypeDef huart2;
 
 #define COMM_PERIOD_MS   50u    /* << 500 ms ACK timeout: honest retransmits */
 #define COMM_STAT_MS     10000u
-#define COMM_BOOT_MS     1000u  /* first demo PING after boot */
+#define COMM_BOOT_TICKS  20u    /* first PING after 20 × 50 ms loops */
 #define COMM_TXQ_DEPTH   4u
 #define COMM_TX_TIMEOUT  100u   /* ms; 520 B @115200 ~ 45 ms worst case */
 #define COMM_TASK_STACK  1024u  /* words; session/frame state is static */
@@ -54,7 +54,7 @@ void app_comm_task(void *arg)
 
     TickType_t last_wake = xTaskGetTickCount();
     const uint32_t t0 = HAL_GetTick();
-    bool boot_sent = false;
+    uint32_t boot_wait = COMM_BOOT_TICKS; /* first PING ~1 s after boot */
     uint32_t next_stat = t0 + COMM_STAT_MS;
     cp_link_state_t last_link;
 
@@ -136,10 +136,13 @@ void app_comm_task(void *arg)
             (void)app_comm_send(CP_CMD_PING, (const uint8_t *)"abc", 3);
         }
 
-        /* 5. Boot PING (wrap-safe signed-diff compare). */
-        if (!boot_sent && (int32_t)(now - (t0 + COMM_BOOT_MS)) >= 0) {
-            boot_sent = true;
-            (void)app_comm_send(CP_CMD_PING, (const uint8_t *)"abc", 3);
+        /* 5. Boot PING: counted in RTOS loop iterations (20 × 50 ms), not
+         * via HAL_GetTick — immune to any ms-clock fast-forward storm. */
+        if (boot_wait > 0u) {
+            boot_wait--;
+            if (boot_wait == 0u) {
+                (void)app_comm_send(CP_CMD_PING, (const uint8_t *)"abc", 3);
+            }
         }
 
         /* 6. Link edge + 10 s counter line. */

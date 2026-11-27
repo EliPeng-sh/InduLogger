@@ -10,6 +10,7 @@
 #include "stm32f4xx_hal.h"
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "task.h"
 
 /* CubeMX 6.12 generates these in main.c (no usart.h header pair). */
 extern UART_HandleTypeDef huart1;
@@ -24,6 +25,11 @@ static QueueHandle_t s_wr_q;
 static volatile uint32_t s_ev_drop;
 static volatile bool s_rearm_req;
 static volatile uint32_t s_rearm_count;
+/* Bytes actually written by the DMA since the last (re)arm, counted in the
+ * ISR from CNDTR deltas. Gates draining so a frozen write pointer (aborted
+ * DMA) or a blind rd=0 can never re-expose stale ring content. */
+static volatile uint32_t s_total_bytes;
+static uint16_t s_last_wr;
 
 /* HAL treats ANY error (FE/NE/ORE) during DMA reception as blocking and
  * aborts the Rx transfer (stm32f4xx_hal_uart.c:2416-2438). A glitch on the
@@ -36,20 +42,34 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     }
 }
 
+/* Re-arm on HAL abort-on-error. Board evidence (acceptance #5 attempt 1)
+ * showed the un-throttled version storming: while the line stayed dead the
+ * failed attempt re-flagged itself and retried at consumer frequency,
+ * hammering HAL_GetTick-dependent timing paths. Attempts are therefore
+ * rate-limited to one per RTOS second and stale ring content is excluded
+ * from draining via s_total_bytes. */
 static void uart_link_rearm_if_needed(void)
 {
+    static TickType_t last_try;
+
     if (!s_rearm_req) {
         return;
     }
+    if ((TickType_t)(xTaskGetTickCount() - last_try) < pdMS_TO_TICKS(1000)) {
+        return; /* keep the flag set; retry no sooner than next second */
+    }
+    last_try = xTaskGetTickCount();
     s_rearm_req = false;
-    /* DMA restarts at offset 0: resync reader, drop stale event offsets. */
-    s_ring.rd = 0;
+    /* DMA restarts at offset 0: fresh reader state, discard stale events. */
     xQueueReset(s_wr_q);
+    s_ring.rd = 0;
+    s_last_wr = 0;
+    s_total_bytes = 0;
     if (HAL_UARTEx_ReceiveToIdle_DMA(&huart1, s_ring_buf,
                                      UART_LINK_RING_SIZE) == HAL_OK) {
         s_rearm_count++;
     } else {
-        s_rearm_req = true; /* RxState not READY yet; retry next call */
+        s_rearm_req = true; /* RxState not READY yet; retry next second */
     }
 }
 
@@ -73,6 +93,9 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
         /* CNDTR counts down 1024..1 in circular mode -> wr is 0..1023. */
         uint16_t wr = (uint16_t)(UART_LINK_RING_SIZE -
                                  __HAL_DMA_GET_COUNTER(&hdma_usart1_rx));
+        s_total_bytes += (uint32_t)((uint16_t)(wr - s_last_wr) &
+                                    (UART_LINK_RING_SIZE - 1u));
+        s_last_wr = wr;
         BaseType_t higher_prio_woken = pdFALSE;
         if (xQueueSendFromISR(s_wr_q, &wr, &higher_prio_woken) != pdTRUE) {
             s_ev_drop++; /* consumer too slow; bytes still in ring until
@@ -93,12 +116,23 @@ size_t uart_link_read(uint8_t *dst, size_t max, bool *overrun)
     if (s_wr_q == NULL) {
         return 0;
     }
-    /* Pop queued offsets in FIFO order; drain each against the ring reader
-     * pointer. If max caps a drain, the unread span stays in the ring and
-     * the next offset (or a later one) carries it — uring_drain is span-
-     * based, so nothing is lost, only coalesced. */
-    while (total < max && xQueueReceive(s_wr_q, &wr, 0) == pdTRUE) {
+    /* Only drain bytes the ISR confirmed as freshly DMA-written: a frozen
+     * CNDTR (aborted transfer) or the rd=0 on rearm can never re-expose
+     * stale ring content. Pop queued offsets in FIFO order; drain each
+     * against the ring reader pointer, capped by what is actually new. */
+    uint32_t fresh = s_total_bytes;
+    while (total < max && fresh > 0u &&
+           xQueueReceive(s_wr_q, &wr, 0) == pdTRUE) {
+        size_t before = total;
         total += uring_drain(&s_ring, wr, dst + total, max - total, &ov);
+        if (total > before) {
+            fresh -= (uint32_t)(total - before);
+        }
+    }
+    if (total > 0u) {
+        /* ISR only adds; a lost decrement here just defers accounting by
+         * one event — span-based drain still reads the bytes later. */
+        s_total_bytes -= (uint32_t)total;
     }
     *overrun = ov;
     return total;
