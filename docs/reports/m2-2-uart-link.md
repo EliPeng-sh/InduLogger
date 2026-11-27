@@ -1,7 +1,7 @@
 # M2.2 — UART Link + CommTask + ESP32 Echo — Board Evidence Report
 
-Date: 2026-11-26 · Branch `m2-coproc` · Spec: `docs/specs/2026-11-25-m2-2-uart-link-design.md`
-Plan: `docs/plans/2026-11-25-m2-2-uart-link.md` · Status: acceptance #1-#5 ✅, #6-#7 pending (Task 9)
+Date: 2026-11-27 · Branch `m2-coproc` · Spec: `docs/specs/2026-11-25-m2-2-uart-link-design.md`
+Plan: `docs/plans/2026-11-25-m2-2-uart-link.md` · Status: acceptance #1-#7 ✅ — M2.2 COMPLETE
 
 ## 1. Environment record
 
@@ -23,8 +23,8 @@ Plan: `docs/plans/2026-11-25-m2-2-uart-link.md` · Status: acceptance #1-#5 ✅,
 | 3 | Idle 12 s → heartbeats both sides | ✅ | STM32 rx +2/10s and ESP rx +2/10s during idle windows; link UP sustained |
 | 4 | ESP suppresses ACK → retry×3 → FAULT/DOWN | ✅ | `p`×3 under SUPPRESS_ACK build: retry climbs 3/frame, fault 1→3; DOWN/UP flapping as heartbeats revive link (§3) |
 | 5 | Cable pull 30 s → DOWN; replug → UP, no reset | ✅ | cable4: rx freezes 1952 → `link DOWN` at ≈15 s silence → replug → `link UP`, rx resumes; `rmm` capped +18 (1/s throttle), uptime continuous, no reset (§3) |
-| 6 | 30 min soak, crc=0 | ⏳ Task 9 | current soak-so-far: crc=0 across all joint windows |
-| 7 | LED + no new iwdg throughout | ⏳ Task 9 | no iwdg observed in any joint capture |
+| 6 | 30 min soak, crc=0 | ✅ | soak capture: `[mon] up=16774→16809s` (≈4.7 h continuous, no touching since cable4) with `crc=0` throughout and rx steady +2/10s (3337→3343); `rmm=77` frozen (no re-arm events in steady state) |
+| 7 | LED + no new iwdg throughout | ✅ | no iwdg in any joint capture (cause=power-on across 4.7 h); LD2 1 Hz heartbeat visually confirmed by user 2026-11-27 |
 
 ## 3. Key excerpts
 
@@ -130,7 +130,6 @@ the boot timestamp reconciles exactly with live `up=9814 s`. The earlier cable3-
 
 ## 6. Pending
 
-Task 9: #6 30-min soak (`crc=0`), #7 LED/iwdg watch, final verdict table, AGENTS.md pitfall
-entries (HAL-abort deafness→re-arm, re-arm storm→throttle+fresh-gate, data_bits-omission,
-SDKCONFIG_DEFAULTS cache, CH343 port-open reset, VCP backlog replay, mis-seat red herring,
-COM drift, flat-wildcard skip, pending-frame lesson).
+None — M2.2 complete 2026-11-27 (acceptance 7/7 green; soak 4.7 h `crc=0`; LD2 visually
+confirmed; AGENTS.md pitfalls 24-30 recorded). Next milestone: M2.3 WiFi/MQTT, with the
+pre-ruled RTC basic init landing before it (ruling R7).
