@@ -1,0 +1,8 @@
+# M2.2 acceptance #4 adversarial build: STM32 must show retry x3 -> fault -> link DOWN.
+# Full standalone defaults (SDKCONFIG_DEFAULTS replaces, not merges).
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+CONFIG_COPROC_SUPPRESS_ACK=y
